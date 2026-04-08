@@ -1,30 +1,20 @@
-node_modules/
-.expo/
-dist/
-web-build/
+# Mobile
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+mobile/.env
 
-# Native
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
+# Backend
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/.env
+backend/digital_clone.db
+backend/chroma_data/
+backend/.venv/
+backend/venv/
 
-# Metro
-.metro-health-check*
-
-# Environment & secrets
-.env
-.env.local
-.env.*.local
-aws-exports.js
-
-# macOS
+# General
 .DS_Store
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
+*.log
