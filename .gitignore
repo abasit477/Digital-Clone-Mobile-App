@@ -1,20 +1,39 @@
-# Mobile
+# ── Mobile ────────────────────────────────────────────────────────────────────
 mobile/node_modules/
 mobile/.expo/
 mobile/dist/
 mobile/web-build/
 mobile/.env
+mobile/.env.*
+mobile/src/config/adminConfig.js
 
-# Backend
-backend/__pycache__/
-backend/**/__pycache__/
-backend/*.pyc
+# ── Backend ───────────────────────────────────────────────────────────────────
 backend/.env
+backend/.env.*
 backend/digital_clone.db
 backend/chroma_data/
 backend/.venv/
 backend/venv/
 
-# General
+# Python bytecode (recursive)
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ── Secrets / Certs ───────────────────────────────────────────────────────────
+*.pem
+*.key
+*.p12
+*.p8
+*.mobileprovision
+aws-exports.js
+
+# ── OS / IDE ──────────────────────────────────────────────────────────────────
 .DS_Store
 *.log
+.idea/
+.vscode/
+*.swp
+*.swo
