@@ -96,10 +96,10 @@ WebSocket at `/api/v1/ws/voice`:
 
 ### Audio Formats
 
-- **iOS**: records as `.wav` (LinearPCM, 16 kHz mono) → **Transcribe Streaming** (HTTP/2, ~1 s, no S3)
-- **Android**: records as `.mp4` (AAC, 16 kHz mono) → **Transcribe Batch** via S3 (~3–6 s) — streaming API does not support AAC/MP4
-- Format is sent in the `end_of_speech` WebSocket message; `stt.py` routes to streaming or batch accordingly
-- Streaming uses `amazon-transcribe` SDK (`awscrt` HTTP/2 transport); WAV header is stripped to extract raw PCM before sending
+- **iOS**: records as `.wav` (LinearPCM, 16 kHz mono) → Transcribe `MediaFormat: "wav"`
+- **Android**: records as `.mp4` (AAC, 16 kHz mono) → Transcribe `MediaFormat: "mp4"`
+- Format is sent in the `end_of_speech` WebSocket message so the backend uses the correct format
+- Note: Transcribe Streaming API (`amazon-transcribe` SDK) was attempted but abandoned — `awscrt`'s native C event loop is incompatible with uvicorn's asyncio loop and cannot be bridged reliably
 
 ### RAG / Knowledge Base
 
@@ -137,7 +137,7 @@ Knowledge endpoints:
 | `COGNITO_USER_POOL_ID` | `us-east-1_orFUeN52q` | Project pool |
 | `COGNITO_CLIENT_ID` | `78gtfs160lm6m8lvcdovj64krt` | Project client |
 | `CHROMA_PERSIST_DIR` | `./chroma_data` | Local disk persistence |
-| `STT_PROVIDER` | `aws` | AWS Transcribe: streaming for WAV/iOS, batch for MP4/Android |
+| `STT_PROVIDER` | `aws` | AWS Transcribe (batch job via S3) |
 | `TTS_PROVIDER` | `aws` | AWS Polly (neural, MP3) |
 | `LLM_PROVIDER` | `aws` | AWS Bedrock (Converse API) |
 | `KNOWLEDGE_PROVIDER` | `chroma` | ChromaDB local vector store |

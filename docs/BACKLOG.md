@@ -21,12 +21,12 @@ Session history is currently in-memory only — lost on reconnect or server rest
 - Show history list in ProfileScreen (user) and per-clone usage in AdminDashboard
 - **Files:** new `backend/app/models/conversation.py`, new routes, `backend/app/api/v1/routes/voice.py`
 
-### 3. Streaming STT (Replace Transcribe Batch) ✅
+### 3. Streaming STT (Replace Transcribe Batch)
 Current STT: upload to S3 → start batch job → poll every 0.5s → fetch result (~3–6s latency).
 - Replace with AWS Transcribe Streaming API (WebSocket-based, real-time)
 - Eliminates S3 roundtrip, reduces latency to ~1s
 - **Files:** `backend/app/services/providers/aws/stt.py`, `backend/app/services/interfaces/stt.py`
-- **Note:** Streaming path active for WAV (iOS). MP4 (Android) still uses batch — Transcribe Streaming doesn't support AAC.
+- **Note:** `amazon-transcribe` SDK attempted and reverted — `awscrt` native event loop incompatible with uvicorn. Revisit using `aiobotocore` or direct WebSocket + AWS SigV4.
 
 ### 4. Redis Session Store
 `_sessions` dict in `voice.py` is in-memory — breaks with multiple backend instances.
@@ -98,6 +98,14 @@ SQLite is dev-only; PostgreSQL needed for production.
 - Detect silence after speech using expo-av metering (`isMeteringEnabled: true`)
 - Auto-trigger `endSpeech()` after ~1.5s of silence — removes need to hold button
 - **Files:** `mobile/src/screens/InteractionScreen.js`
+
+### 17 (new). Migrate expo-av → expo-audio / expo-video (SDK 55 upgrade)
+- `expo-av` deprecated in SDK 54, removed in SDK 55
+- Replace `Audio.Recording` with `AudioRecorder` from `expo-audio`
+- Replace `Audio.Sound` playback with `AudioPlayer` from `expo-audio`
+- Replace `Audio.setAudioModeAsync` with `AudioModule.setAudioModeAsync`
+- **Files:** `mobile/src/screens/InteractionScreen.js`, `mobile/package.json`
+- **Do when:** upgrading to SDK 55+
 
 ---
 
