@@ -464,6 +464,34 @@ const InteractionScreen = ({ route, navigation }) => {
   useEffect(() => {
     let mounted = true;
 
+    // Defined inside the effect so it shares the mounted flag and has no closure ordering issues.
+    const playNextSegment = async () => {
+      if (segmentQueue.current.length === 0) {
+        isPlayingSegment.current = false;
+        if (turnDoneRef.current && mounted) {
+          turnDoneRef.current = false;
+          setAvatarState(S.IDLE);
+          setStatusText('Ready');
+        }
+        return;
+      }
+      isPlayingSegment.current = true;
+      const combined = segmentQueue.current.shift();
+      try {
+        const uri = FileSystem.cacheDirectory + `seg_${Date.now()}.mp3`;
+        await FileSystem.writeAsStringAsync(uri, combined, { encoding: 'base64' });
+        if (soundRef.current) { await soundRef.current.unloadAsync(); soundRef.current = null; }
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true, staysActiveInBackground: false });
+        const { sound } = await Audio.Sound.createAsync({ uri });
+        soundRef.current = sound;
+        await sound.playAsync();
+        await new Promise((resolve) => {
+          sound.setOnPlaybackStatusUpdate((s) => { if (s.didJustFinish) resolve(); });
+        });
+      } catch (e) { console.warn('[playSegment] error:', e); }
+      if (mounted) playNextSegment();
+    };
+
     const connect = async () => {
       try {
         const { data: session } = await authService.getSession();
@@ -486,11 +514,14 @@ const InteractionScreen = ({ route, navigation }) => {
             setMessages((m) => [...m, { role: 'clone', text }]);
           },
           onAudioChunk: (chunk) => { audioQueue.current.push(chunk); },
-          onAudioSegmentDone: (chunks) => {
+          onAudioSegmentDone: () => {
             if (!mounted) return;
+            const combined = audioQueue.current.join('');
+            audioQueue.current = [];
+            if (!combined) return;
             setAvatarState(S.SPEAKING);
             setStatusText('Speaking…');
-            segmentQueue.current.push(chunks.join(''));
+            segmentQueue.current.push(combined);
             if (!isPlayingSegment.current) playNextSegment();
           },
           onTurnDone: () => {
@@ -538,37 +569,6 @@ const InteractionScreen = ({ route, navigation }) => {
     setMessages([]);
     sessionRef.current?.init(clone.id, d);
   }, [clone.id]);
-
-  // ── Playback ───────────────────────────────────────────────────────────────
-  // Segment queue player — plays audio segments back-to-back as they arrive.
-  // Each segment is one synthesized sentence; we start playing segment 1 while
-  // segments 2, 3, … are still being generated on the backend.
-  const playNextSegment = useCallback(async () => {
-    if (segmentQueue.current.length === 0) {
-      isPlayingSegment.current = false;
-      if (turnDoneRef.current) {
-        turnDoneRef.current = false;
-        setAvatarState(S.IDLE);
-        setStatusText('Ready');
-      }
-      return;
-    }
-    isPlayingSegment.current = true;
-    const combined = segmentQueue.current.shift();
-    try {
-      const uri = FileSystem.cacheDirectory + `seg_${Date.now()}.mp3`;
-      await FileSystem.writeAsStringAsync(uri, combined, { encoding: 'base64' });
-      if (soundRef.current) { await soundRef.current.unloadAsync(); soundRef.current = null; }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true, staysActiveInBackground: false });
-      const { sound } = await Audio.Sound.createAsync({ uri });
-      soundRef.current = sound;
-      await sound.playAsync();
-      await new Promise((resolve) => {
-        sound.setOnPlaybackStatusUpdate((s) => { if (s.didJustFinish) resolve(); });
-      });
-    } catch (e) { console.warn('[playSegment] error:', e); }
-    playNextSegment();
-  }, []);
 
   // ── Recording ──────────────────────────────────────────────────────────────
   const startRecording = useCallback(async () => {

@@ -64,7 +64,7 @@ export const voiceService = {
                 handlers.onAudioChunk?.(msg.data);
                 break;
               case 'audio_segment_done':
-                handlers.onAudioSegmentDone?.(audioChunks);
+                handlers.onAudioSegmentDone?.();
                 audioChunks = [];
                 break;
               case 'turn_done':
