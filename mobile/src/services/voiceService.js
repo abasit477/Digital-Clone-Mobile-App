@@ -63,9 +63,18 @@ export const voiceService = {
                 audioChunks.push(msg.data);
                 handlers.onAudioChunk?.(msg.data);
                 break;
-              case 'audio_done':
-                handlers.onAudioDone?.(audioChunks);
+              case 'audio_segment_done':
+                handlers.onAudioSegmentDone?.(audioChunks);
                 audioChunks = [];
+                break;
+              case 'turn_done':
+                handlers.onTurnDone?.();
+                break;
+              case 'audio_done':
+                // Fallback for older backend — treat as segment_done + turn_done
+                handlers.onAudioSegmentDone?.(audioChunks);
+                audioChunks = [];
+                handlers.onTurnDone?.();
                 break;
               case 'error':
                 handlers.onError?.(msg.message);

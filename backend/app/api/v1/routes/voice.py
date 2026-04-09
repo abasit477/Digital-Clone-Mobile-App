@@ -18,6 +18,7 @@ Protocol (JSON messages):
 """
 import asyncio
 import base64
+import re
 import uuid
 import json
 import logging
@@ -36,6 +37,11 @@ from ....services.interfaces.knowledge import KnowledgeProvider
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["voice"])
+
+
+def _is_sentence_end(text: str) -> bool:
+    """True when text ends with sentence-ending punctuation (min 40 chars to avoid Dr./Mrs. splits)."""
+    return len(text.strip()) >= 40 and bool(re.search(r'[.!?]\s*$', text.strip()))
 
 # In-memory session store (replace with Redis for multi-instance deployments)
 _sessions: dict[str, dict] = {}
@@ -121,49 +127,59 @@ async def voice_websocket(
                     logger.exception("Knowledge search error")
                     snippets = []
 
-                # 3. Generate clone response
+                # 3 + 4. Stream LLM tokens → sentence-level TTS → audio per sentence
+                ctx = AgentContext(
+                    clone_id=clone.id,
+                    domain=domain,
+                    session_id=session_id,
+                    persona_prompt=clone.persona_prompt,
+                    knowledge_snippets=snippets,
+                    history=history,
+                )
+                chunk_size = 32 * 1024
+                buffer = ""
+                full_text = ""
+
+                async def _flush_sentence(sentence: str):
+                    """Synthesize one sentence and stream its audio to the client."""
+                    audio_bytes = await tts.synthesize(sentence, voice_id=clone.voice_id)
+                    for i in range(0, len(audio_bytes), chunk_size):
+                        await _send(ws, {
+                            "type": "audio_chunk",
+                            "data": base64.b64encode(audio_bytes[i: i + chunk_size]).decode(),
+                        })
+                        await asyncio.sleep(0)
+                    await _send(ws, {"type": "audio_segment_done"})
+
                 try:
-                    context = AgentContext(
-                        clone_id=clone.id,
-                        domain=domain,
-                        session_id=session_id,
-                        persona_prompt=clone.persona_prompt,
-                        knowledge_snippets=snippets,
-                        history=history,
-                    )
-                    agent_resp = await agent.chat(transcript, context)
-                    reply_text = agent_resp.text
+                    async for token in agent.chat_stream(transcript, ctx):
+                        buffer += token
+                        full_text += token
+                        if _is_sentence_end(buffer) or len(buffer) > 500:
+                            sentence = buffer.strip()
+                            buffer = ""
+                            await _flush_sentence(sentence)
                 except Exception as e:
-                    logger.exception("Agent error")
+                    logger.exception("Agent stream error")
                     await _send(ws, {"type": "error", "message": f"Agent failed: {e}"})
                     continue
 
-                await _send(ws, {"type": "response_text", "data": reply_text})
+                # Flush any remaining text that didn't end with punctuation
+                if buffer.strip():
+                    try:
+                        await _flush_sentence(buffer.strip())
+                    except Exception as e:
+                        logger.exception("TTS flush error")
+                        await _send(ws, {"type": "error", "message": f"TTS failed: {e}"})
+                        continue
 
-                # Update history
+                # Update history and signal end of turn
                 history.append({"role": "user",      "content": transcript})
-                history.append({"role": "assistant",  "content": reply_text})
+                history.append({"role": "assistant",  "content": full_text})
                 _sessions[session_id]["history"] = history
 
-                # 4. Synthesize speech
-                try:
-                    audio_bytes = await tts.synthesize(reply_text, voice_id=clone.voice_id)
-                except Exception as e:
-                    logger.exception("TTS error")
-                    await _send(ws, {"type": "error", "message": f"TTS failed: {e}"})
-                    continue
-
-                # Stream audio in 32KB chunks
-                chunk_size = 32 * 1024
-                for i in range(0, len(audio_bytes), chunk_size):
-                    chunk = audio_bytes[i: i + chunk_size]
-                    await _send(ws, {
-                        "type": "audio_chunk",
-                        "data": base64.b64encode(chunk).decode(),
-                    })
-                    await asyncio.sleep(0)   # yield to event loop
-
-                await _send(ws, {"type": "audio_done"})
+                await _send(ws, {"type": "response_text", "data": full_text})
+                await _send(ws, {"type": "turn_done"})
 
             # ── ping ───────────────────────────────────────────────────────
             elif msg_type == "ping":
