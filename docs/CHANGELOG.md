@@ -4,6 +4,13 @@ All notable changes to this project are documented here, newest first.
 
 ---
 
+## 2026-04-09
+
+### Changed
+- **Streaming STT for iOS** — replaced AWS Transcribe batch path (S3 upload → poll ~3–6 s) with real-time streaming via the `amazon-transcribe` SDK (HTTP/2 event stream, ~1 s latency) for WAV audio recorded on iOS. Android (MP4/AAC) continues through the batch path because Transcribe Streaming does not support AAC. Added `amazon-transcribe==0.6.2` to `requirements.txt`. WAV header is parsed properly (RIFF chunk walk) to extract raw PCM before streaming. `awscrt` static credential provider used so explicit `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` from `.env` are honoured.
+
+---
+
 ## 2026-04-08
 
 ### Fixed

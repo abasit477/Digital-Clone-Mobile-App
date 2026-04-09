@@ -8,3 +8,4 @@ httpx==0.28.1
 boto3==1.35.88
 chromadb==0.5.23
 python-multipart==0.0.19
+amazon-transcribe==0.6.2

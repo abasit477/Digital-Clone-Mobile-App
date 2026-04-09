@@ -21,11 +21,12 @@ Session history is currently in-memory only — lost on reconnect or server rest
 - Show history list in ProfileScreen (user) and per-clone usage in AdminDashboard
 - **Files:** new `backend/app/models/conversation.py`, new routes, `backend/app/api/v1/routes/voice.py`
 
-### 3. Streaming STT (Replace Transcribe Batch)
+### 3. Streaming STT (Replace Transcribe Batch) ✅
 Current STT: upload to S3 → start batch job → poll every 0.5s → fetch result (~3–6s latency).
 - Replace with AWS Transcribe Streaming API (WebSocket-based, real-time)
 - Eliminates S3 roundtrip, reduces latency to ~1s
 - **Files:** `backend/app/services/providers/aws/stt.py`, `backend/app/services/interfaces/stt.py`
+- **Note:** Streaming path active for WAV (iOS). MP4 (Android) still uses batch — Transcribe Streaming doesn't support AAC.
 
 ### 4. Redis Session Store
 `_sessions` dict in `voice.py` is in-memory — breaks with multiple backend instances.
