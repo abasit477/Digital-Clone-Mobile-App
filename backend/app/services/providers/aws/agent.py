@@ -25,6 +25,45 @@ class AWSBedrockAgent:
         text = await loop.run_in_executor(None, self._chat_sync, user_message, context)
         return AgentResponse(text=text, session_id=context.session_id)
 
+    async def chat_stream(self, user_message: str, context: AgentContext):
+        """Async generator yielding text tokens from Bedrock converse_stream.
+
+        Runs the synchronous boto3 event stream in a thread and bridges each
+        token back to the asyncio loop via a Queue + run_coroutine_threadsafe.
+        """
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def _stream_sync():
+            system_prompt = self._build_system_prompt(context)
+            messages = []
+            for msg in context.history[-10:]:
+                messages.append({
+                    "role": msg["role"],
+                    "content": [{"text": msg["content"]}],
+                })
+            messages.append({"role": "user", "content": [{"text": user_message}]})
+
+            response = self._client.converse_stream(
+                modelId=self._settings.BEDROCK_MODEL_ID,
+                system=[{"text": system_prompt}],
+                messages=messages,
+                inferenceConfig={"maxTokens": 1024, "temperature": 0.7},
+            )
+            for event in response["stream"]:
+                if "contentBlockDelta" in event:
+                    token = event["contentBlockDelta"]["delta"].get("text", "")
+                    if token:
+                        asyncio.run_coroutine_threadsafe(queue.put(token), loop)
+            asyncio.run_coroutine_threadsafe(queue.put(None), loop)  # sentinel
+
+        loop.run_in_executor(None, _stream_sync)
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                break
+            yield chunk
+
     def _chat_sync(self, user_message: str, context: AgentContext) -> str:
         system_prompt = self._build_system_prompt(context)
 

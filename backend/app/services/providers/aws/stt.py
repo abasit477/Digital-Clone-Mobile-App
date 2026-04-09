@@ -30,7 +30,7 @@ class AWSTranscribeProvider:
 
     async def transcribe(self, audio_bytes: bytes, language_code: str = "en-US", audio_format: str = "mp4") -> str:
         """Upload audio to S3, kick off a transcription job, poll until done."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._transcribe_sync, audio_bytes, language_code, audio_format)
 
     def _transcribe_sync(self, audio_bytes: bytes, language_code: str, audio_format: str = "mp4") -> str:

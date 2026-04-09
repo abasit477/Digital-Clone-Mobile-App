@@ -99,6 +99,7 @@ WebSocket at `/api/v1/ws/voice`:
 - **iOS**: records as `.wav` (LinearPCM, 16 kHz mono) → Transcribe `MediaFormat: "wav"`
 - **Android**: records as `.mp4` (AAC, 16 kHz mono) → Transcribe `MediaFormat: "mp4"`
 - Format is sent in the `end_of_speech` WebSocket message so the backend uses the correct format
+- Note: Transcribe Streaming API (`amazon-transcribe` SDK) was attempted but abandoned — `awscrt`'s native C event loop is incompatible with uvicorn's asyncio loop and cannot be bridged reliably
 
 ### RAG / Knowledge Base
 

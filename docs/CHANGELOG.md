@@ -4,6 +4,13 @@ All notable changes to this project are documented here, newest first.
 
 ---
 
+## 2026-04-09
+
+### Attempted / Reverted
+- **Streaming STT** — attempted to replace S3 batch path with `amazon-transcribe` SDK (HTTP/2 event stream). Reverted: `awscrt`'s native C event loop cannot be bridged into uvicorn's asyncio loop. Batch path remains stable. Streaming STT will be revisited using `aiobotocore` or a direct WebSocket approach.
+
+---
+
 ## 2026-04-08
 
 ### Fixed
