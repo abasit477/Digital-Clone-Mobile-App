@@ -18,7 +18,8 @@ apiClient.interceptors.request.use(
   async (config) => {
     try {
       const { data: session } = await authService.getSession();
-      const token = session?.getAccessToken?.()?.getJwtToken?.();
+      // ID token is used so the backend can read email, name, and custom:role claims
+      const token = session?.getIdToken?.()?.getJwtToken?.();
       if (token) config.headers.Authorization = `Bearer ${token}`;
     } catch (_) {}
     return config;

@@ -8,6 +8,20 @@ import React, {
 import authService from '../services/authService';
 import { ADMIN_EMAIL } from '../config/adminConfig';
 
+/**
+ * Derive role from token payload.
+ * Cognito custom attributes land as "custom:role" in the ID token.
+ * Falls back to legacy ADMIN_EMAIL check so existing admin accounts still work.
+ */
+function deriveRole(payload, emailFallback) {
+  const cognitoRole = payload['custom:role'];
+  if (cognitoRole) return cognitoRole;
+  // Legacy: hardcoded admin email
+  const email = payload.email ?? emailFallback ?? '';
+  if (email === ADMIN_EMAIL) return 'platform_admin';
+  return null; // first-time user → RoleSelectScreen
+}
+
 // ─── State Shape ─────────────────────────────────────────────────────────────
 const initialState = {
   user:            null,
@@ -82,7 +96,7 @@ export function AuthProvider({ children }) {
       const user = {
         username:    email,
         displayName: payload.name ?? null,
-        role:        email === ADMIN_EMAIL ? 'admin' : 'user',
+        role:        deriveRole(payload, email),
       };
       dispatch({ type: AUTH_ACTIONS.INITIALIZE, payload: { user } });
     };
@@ -102,7 +116,7 @@ export function AuthProvider({ children }) {
     const user = {
       username:    username,
       displayName: payload.name ?? null,
-      role:        username === ADMIN_EMAIL ? 'admin' : 'user',
+      role:        deriveRole(payload, username),
     };
     console.log('[AuthStore.signIn] dispatching SIGN_IN → user:', user.username, '| role:', user.role);
     dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
@@ -115,7 +129,15 @@ export function AuthProvider({ children }) {
     dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
   }, []);
 
-  const value = { ...state, signIn, signOut };
+  // Called after setUserRole so navigation updates immediately
+  const updateRole = useCallback((role) => {
+    dispatch({
+      type: AUTH_ACTIONS.SIGN_IN,
+      payload: { user: { ...state.user, role } },
+    });
+  }, [state.user]);
+
+  const value = { ...state, signIn, signOut, updateRole };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

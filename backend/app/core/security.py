@@ -26,27 +26,39 @@ def _get_jwks() -> dict:
     return resp.json()
 
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Security(bearer_scheme)) -> dict:
-    """FastAPI dependency — returns decoded token payload or raises 401."""
+def _decode_token(token_str: str) -> dict:
+    """Decode and verify a raw JWT string. Raises ValueError on failure."""
     settings = get_settings()
-    token = credentials.credentials
-
     try:
         jwks = _get_jwks()
-        unverified_header = jwt.get_unverified_header(token)
+        unverified_header = jwt.get_unverified_header(token_str)
         rsa_key = next(
             (k for k in jwks["keys"] if k["kid"] == unverified_header["kid"]),
             None,
         )
         if rsa_key is None:
-            raise HTTPException(status_code=401, detail="Invalid token key")
-
-        payload = jwt.decode(
-            token,
+            raise ValueError("Invalid token key")
+        return jwt.decode(
+            token_str,
             rsa_key,
             algorithms=["RS256"],
             audience=settings.COGNITO_CLIENT_ID,
         )
-        return payload
     except JWTError as e:
-        raise HTTPException(status_code=401, detail=f"Token validation failed: {e}")
+        raise ValueError(f"Token validation failed: {e}")
+
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Security(bearer_scheme)) -> dict:
+    """FastAPI dependency — returns decoded token payload or raises 401."""
+    try:
+        return _decode_token(credentials.credentials)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+
+def verify_token_string(token_str: str) -> dict:
+    """Validate a raw JWT string — for use in WebSocket endpoints."""
+    try:
+        return _decode_token(token_str)
+    except ValueError as e:
+        raise ValueError(str(e))

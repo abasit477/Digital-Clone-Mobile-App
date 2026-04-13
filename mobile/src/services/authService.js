@@ -15,7 +15,7 @@ const makeUser = (email) =>
 
 export const authService = {
   signUp: async (email, password, name) => {
-    console.log('[authService.signUp] start →', email);
+    if (__DEV__) console.log('[authService.signUp] start →', email);
     return new Promise((resolve) => {
       const attributes = [
         new CognitoUserAttribute({ Name: 'email', Value: email.trim().toLowerCase() }),
@@ -31,7 +31,7 @@ export const authService = {
             console.error('[authService.signUp] error →', err.name, err.message);
             resolve({ data: null, error: err });
           } else {
-            console.log('[authService.signUp] success →', result?.user?.getUsername());
+            if (__DEV__) console.log('[authService.signUp] success →', result?.user?.getUsername());
             resolve({ data: result, error: null });
           }
         },
@@ -40,14 +40,14 @@ export const authService = {
   },
 
   confirmSignUp: async (email, code) => {
-    console.log('[authService.confirmSignUp] start →', email, code);
+    if (__DEV__) console.log('[authService.confirmSignUp] start →', email);
     return new Promise((resolve) => {
       makeUser(email).confirmRegistration(code.trim(), true, (err, result) => {
         if (err) {
           console.error('[authService.confirmSignUp] error →', err.name, err.message);
           resolve({ data: null, error: err });
         } else {
-          console.log('[authService.confirmSignUp] success →', result);
+          if (__DEV__) console.log('[authService.confirmSignUp] success');
           resolve({ data: result, error: null });
         }
       });
@@ -55,19 +55,16 @@ export const authService = {
   },
 
   signIn: async (email, password) => {
-    console.log('[authService.signIn] start →', email);
+    if (__DEV__) console.log('[authService.signIn] start →', email);
     return new Promise((resolve) => {
       const authDetails = new AuthenticationDetails({
         Username: email.trim().toLowerCase(),
         Password: password,
       });
       const user = makeUser(email);
-      console.log('[authService.signIn] calling authenticateUser...');
       user.authenticateUser(authDetails, {
         onSuccess: (session) => {
-          console.log('[authService.signIn] onSuccess → isValid:', session.isValid());
-          console.log('[authService.signIn] idToken email:',
-            session.getIdToken?.()?.payload?.email);
+          if (__DEV__) console.log('[authService.signIn] success → isValid:', session.isValid());
           resolve({ data: session, error: null });
         },
         onFailure: (err) => {
@@ -79,7 +76,7 @@ export const authService = {
           resolve({ data: null, error: err });
         },
         newPasswordRequired: (userAttributes) => {
-          console.warn('[authService.signIn] newPasswordRequired →', userAttributes);
+          if (__DEV__) console.warn('[authService.signIn] newPasswordRequired');
           resolve({
             data: null,
             error: { message: 'A new password is required for this account.', name: 'NewPasswordRequired' },
@@ -90,43 +87,37 @@ export const authService = {
   },
 
   signOut: async () => {
-    console.log('[authService.signOut] start');
+    if (__DEV__) console.log('[authService.signOut] start');
     return new Promise((resolve) => {
       const user = userPool.getCurrentUser();
       if (user) {
         user.signOut(() => {
-          console.log('[authService.signOut] done');
+          if (__DEV__) console.log('[authService.signOut] done');
           resolve({ data: true, error: null });
         });
       } else {
-        console.log('[authService.signOut] no current user');
         resolve({ data: true, error: null });
       }
     });
   },
 
   getCurrentUser: async () => {
-    console.log('[authService.getCurrentUser] start');
+    if (__DEV__) console.log('[authService.getCurrentUser] start');
     return new Promise((resolve) => {
       let settled = false;
       const done = (result) => {
         if (settled) return;
         settled = true;
-        console.log('[authService.getCurrentUser] resolving →',
-          result.data ? `user: ${result.data.username}` : 'null');
         resolve(result);
       };
 
       const timer = setTimeout(() => {
-        console.warn('[authService.getCurrentUser] TIMEOUT — resolving null');
+        if (__DEV__) console.warn('[authService.getCurrentUser] TIMEOUT — resolving null');
         done({ data: null, error: null });
       }, 5000);
 
       try {
         const user = userPool.getCurrentUser();
-        console.log('[authService.getCurrentUser] pool user →',
-          user ? user.username : 'null');
-
         if (!user) {
           clearTimeout(timer);
           return done({ data: null, error: null });
@@ -135,14 +126,13 @@ export const authService = {
         user.getSession((err, session) => {
           clearTimeout(timer);
           if (err) {
-            console.error('[authService.getCurrentUser] getSession error →',
-              err.name, err.message);
+            console.error('[authService.getCurrentUser] getSession error →', err.name, err.message);
             done({ data: null, error: null });
           } else if (!session || !session.isValid()) {
-            console.warn('[authService.getCurrentUser] session invalid or null');
+            if (__DEV__) console.warn('[authService.getCurrentUser] session invalid or null');
             done({ data: null, error: null });
           } else {
-            console.log('[authService.getCurrentUser] valid session ✓');
+            if (__DEV__) console.log('[authService.getCurrentUser] valid session ✓');
             done({ data: user, error: null });
           }
         });
@@ -166,11 +156,11 @@ export const authService = {
   },
 
   forgotPassword: async (email) => {
-    console.log('[authService.forgotPassword] start →', email);
+    if (__DEV__) console.log('[authService.forgotPassword] start →', email);
     return new Promise((resolve) => {
       makeUser(email).forgotPassword({
         onSuccess: (data) => {
-          console.log('[authService.forgotPassword] success');
+          if (__DEV__) console.log('[authService.forgotPassword] success');
           resolve({ data, error: null });
         },
         onFailure: (err) => {
@@ -182,11 +172,11 @@ export const authService = {
   },
 
   confirmForgotPassword: async (email, code, newPassword) => {
-    console.log('[authService.confirmForgotPassword] start →', email);
+    if (__DEV__) console.log('[authService.confirmForgotPassword] start →', email);
     return new Promise((resolve) => {
       makeUser(email).confirmPassword(code.trim(), newPassword, {
         onSuccess: () => {
-          console.log('[authService.confirmForgotPassword] success');
+          if (__DEV__) console.log('[authService.confirmForgotPassword] success');
           resolve({ data: true, error: null });
         },
         onFailure: (err) => {
@@ -197,15 +187,41 @@ export const authService = {
     });
   },
 
+  setUserRole: async (role) => {
+    if (__DEV__) console.log('[authService.setUserRole] start →', role);
+    return new Promise((resolve) => {
+      const user = userPool.getCurrentUser();
+      if (!user) return resolve({ data: null, error: new Error('No current user') });
+
+      user.getSession((sessionErr) => {
+        if (sessionErr) return resolve({ data: null, error: sessionErr });
+
+        const attribute = new CognitoUserAttribute({
+          Name:  'custom:role',
+          Value: role,
+        });
+        user.updateAttributes([attribute], (err, result) => {
+          if (err) {
+            console.error('[authService.setUserRole] error →', err.name, err.message);
+            resolve({ data: null, error: err });
+          } else {
+            if (__DEV__) console.log('[authService.setUserRole] success');
+            resolve({ data: result, error: null });
+          }
+        });
+      });
+    });
+  },
+
   resendCode: async (email) => {
-    console.log('[authService.resendCode] start →', email);
+    if (__DEV__) console.log('[authService.resendCode] start →', email);
     return new Promise((resolve) => {
       makeUser(email).resendConfirmationCode((err, result) => {
         if (err) {
           console.error('[authService.resendCode] error →', err.name, err.message);
           resolve({ data: null, error: err });
         } else {
-          console.log('[authService.resendCode] success');
+          if (__DEV__) console.log('[authService.resendCode] success');
           resolve({ data: result, error: null });
         }
       });

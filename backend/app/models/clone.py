@@ -17,6 +17,7 @@ class Clone(Base):
     avatar_url:     Mapped[str]      = mapped_column(String(500), default="")
     # AWS Polly voice ID for this clone
     voice_id:       Mapped[str]      = mapped_column(String(50), default="")
+    creator_email:  Mapped[str]      = mapped_column(String(200), default="")
     is_active:      Mapped[bool]     = mapped_column(Boolean, default=True)
     created_at:     Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at:     Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow,

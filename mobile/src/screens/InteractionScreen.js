@@ -441,9 +441,11 @@ const micStyles = StyleSheet.create({
 const InteractionScreen = ({ route, navigation }) => {
   const { clone } = route.params;
 
+  const domains = clone?.domains?.split(',').map((d) => d.trim()).filter(Boolean) ?? ['general'];
+
   const [avatarState, setAvatarState] = useState(S.IDLE);
   const [messages,    setMessages]    = useState([]);
-  const [domain,      setDomain]      = useState('general');
+  const [domain,      setDomain]      = useState(() => domains[0] ?? 'general');
   const [connected,   setConnected]   = useState(false);
   const [statusText,  setStatusText]  = useState('Connecting…');
   const [isRecording, setIsRecording] = useState(false);
@@ -457,8 +459,6 @@ const InteractionScreen = ({ route, navigation }) => {
   const segmentQueue      = useRef([]);
   const isPlayingSegment  = useRef(false);
   const turnDoneRef       = useRef(false);
-
-  const domains = clone?.domains?.split(',').map((d) => d.trim()).filter(Boolean) ?? ['general'];
 
   // ── Connect ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -559,7 +559,10 @@ const InteractionScreen = ({ route, navigation }) => {
     return () => {
       mounted = false;
       sessionRef.current?.disconnect();
-      recordingRef.current?.stopAndUnloadAsync().catch(() => {});
+      // Null out before async call to prevent double-invoke with stopRecording
+      const rec = recordingRef.current;
+      recordingRef.current = null;
+      rec?.stopAndUnloadAsync().catch(() => {});
       soundRef.current?.unloadAsync().catch(() => {});
     };
   }, [clone.id, domain]);
@@ -623,7 +626,8 @@ const InteractionScreen = ({ route, navigation }) => {
   }, [isRecording]);
 
   useEffect(() => {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    return () => clearTimeout(t);
   }, [messages]);
 
   // ─────────────────────────────────────────────────────────────────────────

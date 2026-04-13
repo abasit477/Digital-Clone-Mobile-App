@@ -23,12 +23,13 @@ import uuid
 import json
 import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlalchemy.orm import Session
 
 from ....db.database import get_db
 from ....models.clone import Clone
 from ....core.dependencies import get_stt_provider, get_tts_provider, get_agent_provider, get_knowledge_provider
+from ....core.security import verify_token_string
 from ....services.interfaces.agent import AgentContext
 from ....services.interfaces.stt import STTProvider
 from ....services.interfaces.tts import TTSProvider
@@ -54,6 +55,7 @@ async def _send(ws: WebSocket, msg: dict):
 @router.websocket("/ws/voice")
 async def voice_websocket(
     ws: WebSocket,
+    token: str = Query(""),
     db: Session = Depends(get_db),
     stt: STTProvider = Depends(get_stt_provider),
     tts: TTSProvider = Depends(get_tts_provider),
@@ -61,6 +63,18 @@ async def voice_websocket(
     knowledge: KnowledgeProvider = Depends(get_knowledge_provider),
 ):
     await ws.accept()
+
+    # Validate JWT before doing anything else
+    if not token:
+        await _send(ws, {"type": "error", "message": "Authentication required"})
+        await ws.close()
+        return
+    try:
+        verify_token_string(token)
+    except ValueError:
+        await _send(ws, {"type": "error", "message": "Invalid or expired token"})
+        await ws.close()
+        return
     session_id = str(uuid.uuid4())
     audio_buffer: list[bytes] = []
     clone: Clone | None = None
@@ -187,6 +201,7 @@ async def voice_websocket(
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected: %s", session_id)
+        _sessions.pop(session_id, None)
     except Exception as e:
         logger.exception("Unexpected WebSocket error")
         try:

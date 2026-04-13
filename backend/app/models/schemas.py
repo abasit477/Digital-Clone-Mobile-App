@@ -1,5 +1,6 @@
 from datetime import datetime
-from pydantic import BaseModel
+from typing import Optional
+from pydantic import BaseModel, EmailStr
 
 
 # ── Clone ─────────────────────────────────────────────────────────────────────
@@ -15,7 +16,7 @@ class CloneBase(BaseModel):
 
 
 class CloneCreate(CloneBase):
-    pass
+    creator_email: str = ""
 
 
 class CloneUpdate(BaseModel):
@@ -81,3 +82,51 @@ class WSResponse(BaseModel):
     type:    str    # "transcript" | "response_text" | "audio_chunk" | "audio_done" | "error"
     data:    str = ""
     message: str = ""
+
+
+# ── Family ────────────────────────────────────────────────────────────────────
+
+class FamilyCreate(BaseModel):
+    name:     str
+    clone_id: Optional[str] = None
+
+
+class FamilyMemberOut(BaseModel):
+    id:          str
+    email:       str
+    user_email:  Optional[str]
+    role:        str
+    invite_code: str
+    accepted_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class FamilyResponse(BaseModel):
+    id:            str
+    name:          str
+    creator_email: str
+    clone_id:      Optional[str]
+    created_at:    datetime
+    members:       list[FamilyMemberOut] = []
+
+    model_config = {"from_attributes": True}
+
+
+class InviteRequest(BaseModel):
+    email: EmailStr
+
+
+class JoinRequest(BaseModel):
+    invite_code: str
+
+
+# ── Persona synthesis ────────────────────────────────────────────────────────
+
+class OnboardingAnswers(BaseModel):
+    answers: dict  # question_key -> answer text
+
+
+class PersonaSynthesisResponse(BaseModel):
+    persona_prompt:  str
+    knowledge_text:  str

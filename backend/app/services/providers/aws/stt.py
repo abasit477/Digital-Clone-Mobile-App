@@ -42,10 +42,27 @@ class AWSTranscribeProvider:
         # Upload to S3
         try:
             self._s3.put_object(Bucket=self._bucket, Key=s3_key, Body=audio_bytes)
-        except ClientError:
-            # Bucket may not exist yet — create it then retry
-            self._s3.create_bucket(Bucket=self._bucket)
-            self._s3.put_object(Bucket=self._bucket, Key=s3_key, Body=audio_bytes)
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code in ("NoSuchBucket", "NoSuchKey"):
+                # Bucket doesn't exist yet — create it, wait for propagation, then retry
+                try:
+                    settings = get_settings()
+                    region = settings.AWS_REGION
+                    if region == "us-east-1":
+                        self._s3.create_bucket(Bucket=self._bucket)
+                    else:
+                        self._s3.create_bucket(
+                            Bucket=self._bucket,
+                            CreateBucketConfiguration={"LocationConstraint": region},
+                        )
+                except ClientError as ce:
+                    if ce.response["Error"]["Code"] != "BucketAlreadyOwnedByYou":
+                        raise
+                time.sleep(1)  # allow bucket to become fully available
+                self._s3.put_object(Bucket=self._bucket, Key=s3_key, Body=audio_bytes)
+            else:
+                raise
 
         s3_uri = f"s3://{self._bucket}/{s3_key}"
 
@@ -56,18 +73,40 @@ class AWSTranscribeProvider:
             LanguageCode=language_code,
         )
 
-        # Poll for completion (max 30s)
-        for _ in range(60):
-            time.sleep(0.5)
-            status = self._client.get_transcription_job(TranscriptionJobName=job_name)
-            job_status = status["TranscriptionJob"]["TranscriptionJobStatus"]
-            if job_status == "COMPLETED":
-                transcript_uri = status["TranscriptionJob"]["Transcript"]["TranscriptFileUri"]
-                with urllib.request.urlopen(transcript_uri) as resp:
-                    data = json.loads(resp.read())
-                return data["results"]["transcripts"][0]["transcript"]
-            if job_status == "FAILED":
-                reason = status["TranscriptionJob"].get("FailureReason", "unknown")
-                raise RuntimeError(f"Transcription job failed: {reason}")
+        # Poll for completion (max 30s) with exponential backoff
+        transcript = None
+        wait = 0.5
+        try:
+            for _ in range(30):
+                time.sleep(wait)
+                wait = min(wait * 1.5, 5.0)  # ramp from 0.5s up to 5s cap
 
-        raise TimeoutError("Transcription job timed out")
+                status = self._client.get_transcription_job(TranscriptionJobName=job_name)
+                job_status = status["TranscriptionJob"]["TranscriptionJobStatus"]
+
+                if job_status == "COMPLETED":
+                    transcript_uri = status["TranscriptionJob"]["Transcript"]["TranscriptFileUri"]
+                    with urllib.request.urlopen(transcript_uri) as resp:
+                        data = json.loads(resp.read())
+                    transcript = data["results"]["transcripts"][0]["transcript"]
+                    break
+
+                if job_status == "FAILED":
+                    reason = status["TranscriptionJob"].get("FailureReason", "unknown")
+                    raise RuntimeError(f"Transcription job failed: {reason}")
+
+        finally:
+            # Always clean up — delete the S3 file and Transcribe job regardless of outcome
+            try:
+                self._s3.delete_object(Bucket=self._bucket, Key=s3_key)
+            except Exception:
+                pass
+            try:
+                self._client.delete_transcription_job(TranscriptionJobName=job_name)
+            except Exception:
+                pass
+
+        if transcript is None:
+            raise TimeoutError("Transcription job timed out")
+
+        return transcript

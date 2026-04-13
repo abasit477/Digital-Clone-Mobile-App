@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     POLLY_DEFAULT_VOICE: str = "Matthew"   # used when clone has no voice set
     POLLY_ENGINE: str = "neural"
 
+    # SES — for sending invite emails
+    SES_SENDER_EMAIL: str = ""
+
     # ── Provider selection ────────────────────────────────────────────────────
     # Swap to "google" (or any registered provider) without changing code.
     STT_PROVIDER: str = "aws"

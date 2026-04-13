@@ -41,9 +41,42 @@ const infoStyles = StyleSheet.create({
 });
 
 // ─── Manage Clone Screen ──────────────────────────────────────────────────────
+const DOMAIN_OPTIONS = ['general', 'family', 'professional', 'mentorship'];
+
 const ManageCloneScreen = ({ route, navigation }) => {
   const { clone: initialClone } = route.params;
   const [clone, setClone] = useState(initialClone);
+
+  // ── Edit details ──────────────────────────────────────────────────────────
+  const [editing,       setEditing]       = useState(false);
+  const [editName,      setEditName]      = useState(initialClone.name ?? '');
+  const [editTitle,     setEditTitle]     = useState(initialClone.title ?? '');
+  const [editDesc,      setEditDesc]      = useState(initialClone.description ?? '');
+  const [editDomains,   setEditDomains]   = useState(
+    initialClone.domains?.split(',').map((d) => d.trim()).filter(Boolean) ?? ['general']
+  );
+  const [saving,        setSaving]        = useState(false);
+
+  const toggleDomain = (d) => {
+    setEditDomains((prev) =>
+      prev.includes(d) ? (prev.length > 1 ? prev.filter((x) => x !== d) : prev) : [...prev, d]
+    );
+  };
+
+  const handleSaveDetails = useCallback(async () => {
+    if (!editName.trim()) { Alert.alert('Name required'); return; }
+    setSaving(true);
+    const { data, error } = await cloneService.updateClone(clone.id, {
+      name:        editName.trim(),
+      title:       editTitle.trim(),
+      description: editDesc.trim(),
+      domains:     editDomains.join(','),
+    });
+    setSaving(false);
+    if (error) { Alert.alert('Error', 'Failed to save changes.'); return; }
+    setClone((prev) => ({ ...prev, ...data }));
+    setEditing(false);
+  }, [clone.id, editName, editTitle, editDesc, editDomains]);
 
   // ── Knowledge — text ──────────────────────────────────────────────────────
   const [knowledgeText,   setKnowledgeText]   = useState('');
@@ -215,12 +248,77 @@ const ManageCloneScreen = ({ route, navigation }) => {
 
         {/* Clone details */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Clone details</Text>
-          <InfoRow label="Name"        value={clone.name} />
-          <InfoRow label="Title"       value={clone.title} />
-          <InfoRow label="Description" value={clone.description} />
-          <InfoRow label="Voice"       value={clone.voice_id || 'Matthew'} />
-          <InfoRow label="Domains"     value={domains.join(', ')} isLast />
+          <View style={styles.cardTitleRow}>
+            <Text style={[styles.cardTitle, { marginBottom: 0 }]}>Clone details</Text>
+            {!editing && (
+              <TouchableOpacity onPress={() => setEditing(true)}>
+                <Text style={styles.editLink}>Edit</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {editing ? (
+            <>
+              <Text style={styles.editLabel}>Name</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Clone name"
+                placeholderTextColor={colors.inputPlaceholder}
+              />
+              <Text style={styles.editLabel}>Title</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editTitle}
+                onChangeText={setEditTitle}
+                placeholder="Short title"
+                placeholderTextColor={colors.inputPlaceholder}
+              />
+              <Text style={styles.editLabel}>Description</Text>
+              <TextInput
+                style={[styles.editInput, { minHeight: 72, textAlignVertical: 'top' }]}
+                value={editDesc}
+                onChangeText={setEditDesc}
+                placeholder="Brief description"
+                placeholderTextColor={colors.inputPlaceholder}
+                multiline
+              />
+              <Text style={styles.editLabel}>Domains</Text>
+              <View style={styles.domainToggleRow}>
+                {DOMAIN_OPTIONS.map((d) => (
+                  <TouchableOpacity
+                    key={d}
+                    style={[styles.domainToggle, editDomains.includes(d) && styles.domainToggleActive]}
+                    onPress={() => toggleDomain(d)}
+                  >
+                    <Text style={[styles.domainToggleText, editDomains.includes(d) && styles.domainToggleTextActive]}>
+                      {d}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.editActions}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditing(false)}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveBtn} onPress={handleSaveDetails} disabled={saving}>
+                  {saving
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={styles.saveBtnText}>Save Changes</Text>
+                  }
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <InfoRow label="Name"        value={clone.name} />
+              <InfoRow label="Title"       value={clone.title} />
+              <InfoRow label="Description" value={clone.description} />
+              <InfoRow label="Voice"       value={clone.voice_id || 'Matthew'} />
+              <InfoRow label="Domains"     value={domains.join(', ')} isLast />
+            </>
+          )}
         </View>
 
         {/* Persona prompt preview */}
@@ -432,6 +530,59 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 20,
   },
+  cardTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing[3],
+  },
+  editLink: { ...typography.bodySmall, color: colors.primary, fontWeight: '600' },
+  editLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
+    marginTop: spacing[2],
+    marginBottom: spacing[1],
+  },
+  editInput: {
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: colors.textPrimary,
+    backgroundColor: colors.background,
+  },
+  domainToggleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  domainToggle: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  domainToggleActive: { borderColor: colors.primary, backgroundColor: '#ede9fe' },
+  domainToggleText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, textTransform: 'capitalize' },
+  domainToggleTextActive: { color: colors.primary },
+  editActions: { flexDirection: 'row', gap: 10, marginTop: spacing[4] },
+  cancelBtn: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cancelBtnText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
+  saveBtn: {
+    flex: 2,
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  saveBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   // Section
   sectionTitle: {
