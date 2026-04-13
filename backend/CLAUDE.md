@@ -5,12 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Git Workflow
 
 - **Never commit directly to `main`** — all development happens on `develop` or a feature branch
-- Merge into `main` only when a feature is complete and tested
+- Do not push until the user has tested and explicitly confirmed
 - Repo: `abasit477/Digital-Clone-Mobile-App`
 
 ## Project Structure
 
-This is a monorepo with two sub-projects:
+Monorepo with two sub-projects:
 
 ```
 mobile/    ← Expo React Native app (SDK 54)
@@ -29,9 +29,6 @@ pip install -r requirements.txt
 
 # Dev server — use 0.0.0.0 so the phone can reach it on the local network
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Localhost only
-uvicorn app.main:app --reload
 ```
 
 API docs: `http://localhost:8000/docs`
@@ -42,23 +39,12 @@ API docs: `http://localhost:8000/docs`
 cp .env.example .env
 ```
 
-Fill in:
-- `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` — required for Bedrock, Transcribe, Polly
-- `BEDROCK_MODEL_ID` — must be an **inference profile ID** with `us.` prefix (e.g. `us.amazon.nova-pro-v1:0`) or a model enabled in your account; direct `anthropic.*` IDs require on-demand throughput which may not be enabled
-- Everything else has working defaults
+Key values to fill in:
+- `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`
+- `BEDROCK_MODEL_ID` — must use `us.` prefix inference profile (e.g. `us.amazon.nova-pro-v1:0`)
+- `SES_SENDER_EMAIL` — verified SES sender for invite emails (optional; invites still work without it)
 
-Mobile `.env`:
-```
-EXPO_PUBLIC_API_URL=http://<your-mac-local-ip>:8000/api/v1
-```
-
-Admin config (git-ignored):
-```bash
-cp mobile/src/config/adminConfig.example.js mobile/src/config/adminConfig.js
-# then set ADMIN_EMAIL to the Cognito account that should get admin access
-```
-
-ChromaDB auto-persists to `./chroma_data/`. SQLite DB is `./digital_clone.db`. Both created on first run.
+ChromaDB persists to `./chroma_data/`. SQLite DB is `./digital_clone.db`. Both created on first run.
 
 **First ingest downloads the embedding model (~90 MB)** — set a 120s timeout on the client side.
 
@@ -68,77 +54,128 @@ ChromaDB auto-persists to `./chroma_data/`. SQLite DB is `./digital_clone.db`. B
 api/v1/routes/        ← HTTP + WebSocket endpoints
 core/                 ← Config (pydantic-settings), Cognito JWT security, DI factory
 db/                   ← SQLAlchemy engine + session
-models/               ← ORM (clone.py) + Pydantic schemas (schemas.py)
+models/               ← ORM (clone.py, family.py) + Pydantic schemas (schemas.py)
 services/interfaces/  ← Python Protocols: STTProvider, TTSProvider, AgentProvider, KnowledgeProvider
 services/providers/   ← Concrete implementations: aws/ (Transcribe, Polly, Bedrock), chroma/
+services/email.py     ← AWS SES invite emails
+services/persona_synthesis.py ← Bedrock Converse API → first-person persona prompt
 ```
 
-### Provider Swap Pattern
+### Role System
 
-All four AI services are behind Protocol interfaces. To add a new provider:
-1. Set the env var (`STT_PROVIDER=google`)
-2. Implement the Protocol in `services/providers/google/stt.py`
-3. Add the `elif` branch in `core/dependencies.py`
+Role stored as Cognito custom attribute `custom:role`. The backend reads it from the **ID token** (not access token — mobile was updated to send ID token).
 
-`core/dependencies.py` is the only place that selects which concrete class to use.
+| Role | `GET /clones` returns | Can call `/families/*` creator endpoints |
+|------|----------------------|------------------------------------------|
+| `platform_admin` | All active clones | Yes |
+| `creator` | Only clones where `creator_email == caller` | Yes |
+| `member` | Only their family's clone | No (403) |
+| no role | All active clones (legacy compat) | No |
+
+`_require_role()` helper in `families.py` enforces role checks — raises 403 if caller role not in allowed list.
+
+### Family Platform
+
+New tables: `families`, `family_members`. `clones` table has `creator_email` column.
+
+**DB migration note:** `creator_email` was added after the initial DB was created. On any existing SQLite DB run:
+```sql
+ALTER TABLE clones ADD COLUMN creator_email VARCHAR(200) DEFAULT "";
+```
+
+Family endpoints (`/api/v1/families/`):
+- `POST /families` — create family + link clone (creator only)
+- `GET /families/mine` — get family + members (creator only)
+- `POST /families/invite` — invite by email, generates 8-char code, fires SES email (non-fatal if SES not set up)
+- `DELETE /families/members/{id}` — remove member (creator only)
+- `POST /families/join` — accept invite by code (member)
+- `GET /families/my-clone` — get the clone the member belongs to (member)
+- `POST /families/synthesize-persona` — Bedrock → persona_prompt + knowledge_text from 20 Q&A answers
 
 ### Voice Interaction Flow
 
-WebSocket at `/api/v1/ws/voice`:
-1. Client → `init` with `clone_id`, `domain`
-2. Client → `audio_chunk` (base64 audio, multiple messages)
-3. Client → `end_of_speech` with `format` field (`"wav"` on iOS, `"mp4"` on Android)
-4. Server: AWS Transcribe → ChromaDB RAG (top-5) → Bedrock LLM (Converse API) → AWS Polly
-5. Server → `transcript`, `response_text`, `audio_chunk` (32 KB each), `audio_done`
-6. In-memory session history (`_sessions` dict) — replace with Redis for multi-instance
+WebSocket at `/api/v1/ws/voice` — **streaming pipeline**:
+1. Client → `init` (clone_id, domain)
+2. Client → `audio_chunk` (base64, multiple) + `end_of_speech` (with `format` field)
+3. Server: Transcribe STT → ChromaDB RAG (top-5) → Bedrock `converse_stream()` → sentence-level Polly TTS
+4. Server → `transcript`, `response_text`, per-sentence `audio_chunk` + `audio_segment_done`, final `turn_done`
 
-**Converse API** is used for Bedrock (`client.converse(...)`) — works with Claude, Nova, and other models without changing code.
+Audio format: iOS records `.wav` (LinearPCM 16kHz), Android records `.mp4` (AAC 16kHz). Format sent in `end_of_speech`.
 
-### Audio Formats
+Transcribe Streaming was attempted and reverted — `awscrt` native C event loop incompatible with uvicorn asyncio.
 
-- **iOS**: records as `.wav` (LinearPCM, 16 kHz mono) → Transcribe `MediaFormat: "wav"`
-- **Android**: records as `.mp4` (AAC, 16 kHz mono) → Transcribe `MediaFormat: "mp4"`
-- Format is sent in the `end_of_speech` WebSocket message so the backend uses the correct format
-- Note: Transcribe Streaming API (`amazon-transcribe` SDK) was attempted but abandoned — `awscrt`'s native C event loop is incompatible with uvicorn's asyncio loop and cannot be bridged reliably
+### Persona Synthesis
+
+`services/persona_synthesis.py` takes a dict of 20 answers (keys `q1`–`q20`), calls Bedrock Converse API with a biographer system prompt, and returns:
+- `persona_prompt` — 200–300 word first-person description injected as the clone's system prompt
+- `knowledge_text` — formatted Q&A pairs for ChromaDB ingestion
 
 ### RAG / Knowledge Base
 
-ChromaDB collection per clone: `clone_{id}`. Chunks: 500 chars / 100-char overlap. Embeddings: `sentence-transformers/all-MiniLM-L6-v2` (local, free). Top-5 results injected into the LLM system prompt.
+ChromaDB collection per clone: `clone_{id}`. Chunks: 500 chars / 100-char overlap. Embeddings: `sentence-transformers/all-MiniLM-L6-v2` (local). Top-5 injected into LLM system prompt.
 
-Knowledge endpoints:
-- `POST /api/v1/admin/clones/{id}/ingest` — `{ text, source }`
-- `POST /api/v1/admin/clones/{id}/ingest/file` — multipart `.txt` or `.md`
-- `DELETE /api/v1/admin/clones/{id}/knowledge` — clears the ChromaDB collection
+Knowledge endpoints (under `/api/v1/admin/clones/{id}/`):
+- `POST ingest` — `{ text, source }`
+- `POST ingest/file` — multipart `.txt` or `.md`
+- `DELETE knowledge` — clears the collection
 
 ### Clone Domain System
 
-`domains` is a comma-separated string on the Clone model (e.g. `"family,professional"`). The active domain is sent with `init`. `aws/agent.py` appends a domain-specific tone instruction to the system prompt:
-- `family` → warm, nurturing, parental
-- `professional` → clear, decisive, leadership
+`domains` is comma-separated (e.g. `"family,general"`). Sent with `init`. `aws/agent.py` appends tone instruction:
+- `family` → warm, nurturing
+- `professional` → clear, decisive
 - `mentorship` → guiding, encouraging
 - `general` → balanced
+
+### Provider Swap Pattern
+
+All AI services behind Protocol interfaces. To add a provider:
+1. Set env var (`STT_PROVIDER=google`)
+2. Implement Protocol in `services/providers/google/stt.py`
+3. Add `elif` branch in `core/dependencies.py`
 
 ## Mobile App
 
 - **Expo SDK 54**, React Navigation v7, `expo-av` for recording/playback
-- Auth: AWS Cognito via `amazon-cognito-identity-js`
-- Role routing: `adminConfig.js` → `ADMIN_EMAIL` → `user.role = 'admin' | 'user'`
-- Admin screens: `AdminDashboard` → `CreateClone` / `ManageClone`
-- User screens: `CloneList` → `Interaction` + `Profile`
+- Auth: `amazon-cognito-identity-js` — **ID token** sent in Authorization header (not access token)
+- Role routing via `custom:role` Cognito attribute; legacy `ADMIN_EMAIL` fallback still works
 - `expo-file-system/legacy` import required — `readAsStringAsync` moved to legacy API in SDK 54
-- After recording, must reset `allowsRecordingIOS: false` in `setAudioModeAsync` before playback or audio routes to earpiece
+- After recording, reset `allowsRecordingIOS: false` before playback or audio routes to earpiece
+
+### Navigation Structure
+
+```
+AppNavigator
+├── Auth (unauthenticated)
+├── RoleSelect (authenticated, no role)
+├── AdminNavigator (platform_admin / admin)
+├── CreatorNavigator (creator)
+│   ├── CreatorHome → CloneTypeSelect → CreatorOnboarding
+│   ├── FamilyManagement (family creators)
+│   ├── PersonalClone (personal creators)
+│   ├── ManageClone, Interaction, Profile
+└── MemberNavigator (member)
+    ├── JoinFamily (no clone yet)
+    └── Interaction, Profile
+```
+
+`CreatorNavigator` checks `listClones()` on mount to decide initial route (home vs management).
+`MemberNavigator` checks `getMyClone()` on mount (join vs interaction).
+
+### Clone Onboarding (20 questions, 5 steps)
+
+`CreatorOnboardingScreen` receives `cloneType: 'family' | 'personal'` param.
+Step 2 ("Your Family" vs "Your Relationships"), Step 4 Q13/Q15, and Step 5 questions all adapt.
+On submit: synthesize persona → create clone → ingest knowledge → (family: create family record) → navigate.
 
 ## Key Settings
 
 | Setting | Default | Notes |
 |---------|---------|-------|
-| `DATABASE_URL` | `sqlite:///./digital_clone.db` | Switch to PostgreSQL URL for prod |
-| `BEDROCK_MODEL_ID` | `us.amazon.nova-pro-v1:0` | Use `us.` prefix (inference profile) |
+| `DATABASE_URL` | `sqlite:///./digital_clone.db` | Switch to PostgreSQL for prod |
+| `BEDROCK_MODEL_ID` | `us.amazon.nova-pro-v1:0` | `us.` prefix required |
 | `COGNITO_USER_POOL_ID` | `us-east-1_orFUeN52q` | Project pool |
 | `COGNITO_CLIENT_ID` | `78gtfs160lm6m8lvcdovj64krt` | Project client |
-| `CHROMA_PERSIST_DIR` | `./chroma_data` | Local disk persistence |
-| `STT_PROVIDER` | `aws` | AWS Transcribe (batch job via S3) |
-| `TTS_PROVIDER` | `aws` | AWS Polly (neural, MP3) |
-| `LLM_PROVIDER` | `aws` | AWS Bedrock (Converse API) |
-| `KNOWLEDGE_PROVIDER` | `chroma` | ChromaDB local vector store |
-| `POLLY_DEFAULT_VOICE` | `Matthew` | Used when clone has no voice_id set |
+| `SES_SENDER_EMAIL` | `""` | Verified SES address; empty = skip email |
+| `CHROMA_PERSIST_DIR` | `./chroma_data` | Local disk |
+| `POLLY_DEFAULT_VOICE` | `Matthew` | Used when clone has no voice_id |

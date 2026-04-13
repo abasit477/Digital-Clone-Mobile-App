@@ -31,9 +31,8 @@ export const voiceService = {
     return {
       connect() {
         return new Promise((resolve, reject) => {
-          ws = new WebSocket(wsUrl, [], {
-            headers: { Authorization: `Bearer ${authToken}` },
-          });
+          const url = `${wsUrl}?token=${encodeURIComponent(authToken)}`;
+          ws = new WebSocket(url);
 
           ws.onopen = () => resolve();
           ws.onerror = (e) => {
