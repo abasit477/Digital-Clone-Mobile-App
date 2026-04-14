@@ -92,12 +92,13 @@ class FamilyCreate(BaseModel):
 
 
 class FamilyMemberOut(BaseModel):
-    id:          str
-    email:       str
-    user_email:  Optional[str]
-    role:        str
-    invite_code: str
-    accepted_at: Optional[datetime]
+    id:           str
+    email:        str
+    user_email:   Optional[str]
+    role:         str
+    invite_code:  str
+    relationship: Optional[str] = None
+    accepted_at:  Optional[datetime]
 
     model_config = {"from_attributes": True}
 
@@ -114,11 +115,18 @@ class FamilyResponse(BaseModel):
 
 
 class InviteRequest(BaseModel):
-    email: EmailStr
+    email:        EmailStr
+    relationship: Optional[str] = None  # "child" | "parent" | "spouse" | "sibling"
 
 
 class JoinRequest(BaseModel):
     invite_code: str
+
+
+class JoinResponse(FamilyMemberOut):
+    """Extended join response that includes family context for the mobile client."""
+    family_name:   str = ""
+    creator_email: str = ""
 
 
 # ── Persona synthesis ────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -41,7 +42,12 @@ const LoginScreen = ({ navigation }) => {
     setApiError('');
     if (!validate()) return;
 
+    Keyboard.dismiss();
     setLoading(true);
+    // Yield one frame so React flushes the loading state to the UI
+    // before Cognito's SRP crypto blocks the JS thread
+    await new Promise(r => setTimeout(r, 50));
+
     const { success, error } = await signIn(email, password);
     setLoading(false);
 

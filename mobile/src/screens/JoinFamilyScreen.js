@@ -1,3 +1,8 @@
+/**
+ * JoinFamilyScreen
+ * Members enter their 8-character invite code to join a family.
+ * On success: saves family info to AsyncStorage → MemberAssessment.
+ */
 import React, { useState } from 'react';
 import {
   View,
@@ -12,11 +17,14 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../store/authStore';
+import { storageKey, KEYS } from '../utils/userStorage';
 import { colors } from '../theme/colors';
 import familyService from '../services/familyService';
-import cloneService from '../services/cloneService';
 
 const JoinFamilyScreen = ({ navigation }) => {
+  const { user } = useAuth();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -26,6 +34,7 @@ const JoinFamilyScreen = ({ navigation }) => {
       Alert.alert('Invalid Code', 'The invite code must be 8 characters.');
       return;
     }
+
     setLoading(true);
     const { data, error } = await familyService.joinFamily(trimmed);
     setLoading(false);
@@ -36,13 +45,25 @@ const JoinFamilyScreen = ({ navigation }) => {
       return;
     }
 
-    // Fetch the family's clone and navigate to Interaction
-    const { data: clone } = await familyService.getMyClone();
-    if (clone) {
-      navigation.replace('Interaction', { clone });
-    } else {
-      navigation.replace('Interaction', {});
-    }
+    // Save family context for use in onboarding and chat
+    const creatorEmail = data.creator_email || '';
+    const creatorName  = creatorEmail.split('@')[0] || 'Family';
+    const familyInfo   = {
+      family_id:     data.family_id   || '',
+      family_name:   data.family_name || 'My Family',
+      creator_email: creatorEmail,
+      creator_name:  creatorName,
+      relationship:  data.relationship || null,
+    };
+
+    try {
+      await AsyncStorage.setItem(
+        storageKey(user?.username, KEYS.memberFamilyInfo),
+        JSON.stringify(familyInfo)
+      );
+    } catch {}
+
+    navigation.replace('MemberAssessment');
   };
 
   return (
@@ -52,7 +73,7 @@ const JoinFamilyScreen = ({ navigation }) => {
         style={styles.inner}
       >
         <LinearGradient
-          colors={['#4f46e5', '#7c3aed']}
+          colors={[colors.gradientStart, colors.gradientEnd]}
           style={styles.heroSection}
         >
           <Text style={styles.heroEmoji}>🔑</Text>
@@ -85,7 +106,7 @@ const JoinFamilyScreen = ({ navigation }) => {
             activeOpacity={0.85}
           >
             <LinearGradient
-              colors={loading ? ['#a0aec0', '#a0aec0'] : ['#4f46e5', '#7c3aed']}
+              colors={loading ? ['#a0aec0', '#a0aec0'] : [colors.gradientStart, colors.gradientEnd]}
               style={styles.joinButton}
             >
               {loading
@@ -101,45 +122,26 @@ const JoinFamilyScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  inner: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  inner: { flex: 1 },
   heroSection: {
     paddingTop: 60,
     paddingBottom: 40,
     paddingHorizontal: 24,
     alignItems: 'center',
   },
-  heroEmoji: {
-    fontSize: 48,
-    marginBottom: 12,
-  },
-  heroTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 8,
-  },
+  heroEmoji: { fontSize: 48, marginBottom: 12 },
+  heroTitle: { fontSize: 28, fontWeight: '700', color: '#fff', marginBottom: 8 },
   heroSubtitle: {
     fontSize: 15,
     color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
     lineHeight: 22,
   },
-  formSection: {
-    flex: 1,
-    padding: 24,
-  },
+  formSection: { flex: 1, padding: 24 },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text || '#1a1a2e',
-    marginBottom: 8,
-    marginTop: 16,
+    fontSize: 14, fontWeight: '600', color: colors.textPrimary,
+    marginBottom: 8, marginTop: 16,
   },
   codeInput: {
     fontSize: 28,
@@ -147,30 +149,19 @@ const styles = StyleSheet.create({
     letterSpacing: 8,
     textAlign: 'center',
     borderWidth: 2,
-    borderColor: '#4f46e5',
+    borderColor: colors.primary,
     borderRadius: 16,
     paddingVertical: 18,
     paddingHorizontal: 16,
-    color: '#4f46e5',
-    backgroundColor: '#f5f3ff',
+    color: colors.primary,
+    backgroundColor: colors.indigo100,
   },
   hint: {
-    fontSize: 13,
-    color: colors.textSecondary || '#888',
-    marginTop: 8,
-    marginBottom: 32,
-    textAlign: 'center',
+    fontSize: 13, color: colors.textSecondary,
+    marginTop: 8, marginBottom: 32, textAlign: 'center',
   },
-  joinButton: {
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  joinButtonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
-  },
+  joinButton: { borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  joinButtonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
 });
 
 export default JoinFamilyScreen;

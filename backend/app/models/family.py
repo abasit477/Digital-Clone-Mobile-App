@@ -22,6 +22,7 @@ class FamilyMember(Base):
     email:       Mapped[str]          = mapped_column(String(200), nullable=False)  # invited email
     user_email:  Mapped[str | None]   = mapped_column(String(200), nullable=True)   # set when accepted
     role:        Mapped[str]          = mapped_column(String(50), nullable=False)    # "creator" | "member"
-    invite_code: Mapped[str]          = mapped_column(String(8), nullable=False)
-    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at:  Mapped[datetime]     = mapped_column(DateTime, default=datetime.utcnow)
+    invite_code:  Mapped[str]           = mapped_column(String(8), nullable=False)
+    relationship: Mapped[str | None]   = mapped_column(String(50), nullable=True)  # "child"|"parent"|"spouse"|"sibling"
+    accepted_at:  Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at:   Mapped[datetime]     = mapped_column(DateTime, default=datetime.utcnow)

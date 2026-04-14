@@ -1,244 +1,194 @@
-import React, { useState, useEffect, useCallback } from 'react';
+/**
+ * HomeScreen — Dashboard
+ * No clone yet  → "Create Your Clone" CTA → starts assessment
+ * Clone exists  → shows clone card + family profile snapshot
+ */
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  Alert,
   TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+  StatusBar,
+  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../store/authStore';
-import { PrimaryButton } from '../components';
+import { storageKey, KEYS } from '../utils/userStorage';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { spacing, radius, shadows } from '../theme/spacing';
+const LIVING_MAP  = { together: 'With family', same_city: 'Same city', diff_city: 'Diff. city', diff_country: 'Abroad' };
+const EDU_MAP     = { high_school: 'High school', vocational: 'Vocational', university: 'University', postgrad: 'Postgrad' };
+const WORK_MAP    = { technology: 'Tech / Eng', healthcare: 'Healthcare', business: 'Business', education: 'Education', trades: 'Trades', arts: 'Arts / Media', other: 'Other' };
 
-// ─── Feature Card ──────────────────────────────────────────────────────────────
-const FeatureCard = ({ title, description, emoji }) => (
-  <View style={cardStyles.container}>
-    <Text style={cardStyles.emoji}>{emoji}</Text>
-    <Text style={cardStyles.title}>{title}</Text>
-    <Text style={cardStyles.description}>{description}</Text>
-  </View>
-);
+function getProfileCards(answers) {
+  const cc = answers?.q_children_count;
+  const childSummary = !cc || cc === 'zero'
+    ? 'No children'
+    : cc === 'one'
+      ? answers.q_child1_name || '1 child'
+      : cc === 'two'
+        ? `${answers.q_child1_name || '?'} & ${answers.q_child2_name || '?'}`
+        : `${answers.q_child1_name || '?'} + more`;
 
-const cardStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    marginHorizontal: spacing[1.5],
-    ...shadows.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  emoji: {
-    fontSize: 24,
-    marginBottom: spacing[2],
-  },
-  title: {
-    ...typography.label,
-    color: colors.textPrimary,
-    marginBottom: spacing[1],
-    fontWeight: '600',
-  },
-  description: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    lineHeight: 15,
-  },
-});
+  return [
+    { icon: '👨‍👩‍👧', label: 'Children',  value: childSummary },
+    { icon: '🏡',     label: 'Living',    value: LIVING_MAP[answers?.q_living_with] ?? '—' },
+    { icon: '🎓',     label: 'Education', value: EDU_MAP[answers?.q_education] ?? '—' },
+    { icon: '💼',     label: 'Work',      value: WORK_MAP[answers?.q_work_field] ?? '—' },
+  ];
+}
 
-// ─── Stat Chip ─────────────────────────────────────────────────────────────────
-const StatChip = ({ label, value }) => (
-  <View style={statStyles.chip}>
-    <Text style={statStyles.value}>{value}</Text>
-    <Text style={statStyles.label}>{label}</Text>
-  </View>
-);
-
-const statStyles = StyleSheet.create({
-  chip: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: radius.md,
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[4],
-    alignItems: 'center',
-    marginHorizontal: spacing[1],
-  },
-  value: {
-    ...typography.headingMedium,
-    color: colors.white,
-    fontWeight: '700',
-  },
-  label: {
-    ...typography.caption,
-    color: 'rgba(255,255,255,0.75)',
-    marginTop: 2,
-  },
-});
-
-// ─── Home Screen ───────────────────────────────────────────────────────────────
 const HomeScreen = ({ navigation }) => {
-  const { user, signOut } = useAuth();
-  const [loggingOut, setLoggingOut] = useState(false);
-  const [greeting,   setGreeting]   = useState('');
+  const { user } = useAuth();
+  const rawName = user?.displayName
+    ?? (user?.username?.includes('@') ? user.username.split('@')[0] : user?.username)
+    ?? 'there';
+  const displayName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+  const initial = displayName.charAt(0).toUpperCase();
 
-  useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour < 12)      setGreeting('Good morning');
-    else if (hour < 17) setGreeting('Good afternoon');
-    else                setGreeting('Good evening');
-  }, []);
+  const [answers, setAnswers] = useState(null);   // null = loading, {} = no clone, {...} = has clone
+  const [loading, setLoading] = useState(true);
 
-  const handleLogout = useCallback(() => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            setLoggingOut(true);
-            await signOut();
-            // AppNavigator will auto-redirect to Auth stack
-          },
-        },
-      ],
-    );
-  }, [signOut]);
+  // Reload on every focus so returning from assessment reflects the new answers
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      AsyncStorage.getItem(storageKey(user?.username, KEYS.assessmentAnswers))
+        .then(raw => setAnswers(raw ? JSON.parse(raw) : null))
+        .catch(() => setAnswers(null))
+        .finally(() => setLoading(false));
+    }, [user?.username])
+  );
 
-  const displayEmail  = user?.username ?? '';
-  const rawName       = user?.displayName
-    ?? (displayEmail.includes('@') ? displayEmail.split('@')[0] : displayEmail)
-    ?? 'User';
-  const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+  const hasClone = answers && Object.keys(answers).length > 0;
+
+  const handleCreateClone = () => {
+    navigation.navigate('FamilyAssessment');
+  };
+
+  const handleRetake = async () => {
+    await AsyncStorage.multiRemove([
+      storageKey(user?.username, KEYS.assessmentAnswers),
+      storageKey(user?.username, KEYS.chatHistory),
+    ]);
+    setAnswers(null);
+    navigation.navigate('FamilyAssessment');
+  };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Gradient header */}
+      <LinearGradient
+        colors={[colors.gradientStart, colors.gradientEnd]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
       >
-        {/* ── Hero Banner ── */}
-        <LinearGradient
-          colors={[colors.gradientStart, colors.gradientEnd]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.hero}
-        >
-          {/* Avatar */}
-          <View style={styles.avatarRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {formattedName.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.avatarMeta}>
-              <Text style={styles.heroGreeting}>{greeting}</Text>
-              <Text style={styles.heroName}>{formattedName} 👋</Text>
-            </View>
-          </View>
-
-          {/* Email badge */}
-          <View style={styles.emailBadge}>
-            <Text style={styles.emailBadgeText} numberOfLines={1}>
-              {displayEmail}
-            </Text>
-          </View>
-
-          {/* Stats row */}
-          <View style={styles.statsRow}>
-            <StatChip label="Sessions"   value="1" />
-            <StatChip label="Queries"    value="0" />
-            <StatChip label="Days Active" value="1" />
-          </View>
-        </LinearGradient>
-
-        {/* ── Status chip ── */}
-        <View style={styles.statusRow}>
-          <View style={styles.statusDot} />
-          <Text style={styles.statusText}>Authenticated via AWS Cognito</Text>
+        <View>
+          <Text style={styles.greeting}>Good day,</Text>
+          <Text style={styles.headerName}>{displayName} 👋</Text>
         </View>
-
-        {/* ── Features ── */}
-        <Text style={styles.sectionTitle}>What's available</Text>
-
-        <View style={styles.featureRow}>
-          <FeatureCard
-            emoji="🔐"
-            title="Secure Auth"
-            description="JWT session managed by AWS Cognito"
-          />
-          <FeatureCard
-            emoji="📡"
-            title="API Ready"
-            description="Axios client with auto token injection"
-          />
+        <View style={styles.headerAvatar}>
+          <Text style={styles.headerAvatarText}>{initial}</Text>
         </View>
+      </LinearGradient>
 
-        <View style={[styles.featureRow, { marginTop: spacing[3] }]}>
-          <FeatureCard
-            emoji="🎨"
-            title="Modern UI"
-            description="Stripe-inspired design system"
-          />
-          <FeatureCard
-            emoji="⚡"
-            title="Fast & Scalable"
-            description="Optimised Expo JS architecture"
-          />
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
+      ) : hasClone ? (
+        /* ── Clone exists — dashboard view ── */
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <Text style={styles.sectionLabel}>YOUR CLONE</Text>
 
-        {/* ── Info card ── */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Session details</Text>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoKey}>Name</Text>
-            <Text style={styles.infoValue} numberOfLines={1}>
-              {user?.displayName ?? '—'}
-            </Text>
+          <TouchableOpacity activeOpacity={0.88} onPress={() => navigation.navigate('Chat')}>
+            <LinearGradient
+              colors={[colors.gradientStart, colors.gradientEnd]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.cloneCard}
+            >
+              <View style={styles.cloneAvatar}>
+                <Text style={styles.cloneAvatarEmoji}>🧬</Text>
+              </View>
+              <View style={styles.cloneInfo}>
+                <Text style={styles.cloneName}>Family Clone</Text>
+                <View style={styles.statusRow}>
+                  <View style={styles.statusDot} />
+                  <Text style={styles.statusText}>Ready to chat</Text>
+                </View>
+                <Text style={styles.cloneHint}>Tap to start a conversation</Text>
+              </View>
+              <View style={styles.arrowBadge}>
+                <Text style={styles.arrowText}>→</Text>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <Text style={[styles.sectionLabel, { marginTop: spacing[7] }]}>FAMILY PROFILE</Text>
+          <View style={styles.statsGrid}>
+            {getProfileCards(answers).map(({ icon, label, value }) => (
+              <View key={label} style={styles.statCard}>
+                <Text style={styles.statIcon}>{icon}</Text>
+                <Text style={styles.statLabel}>{label}</Text>
+                <Text style={styles.statValue} numberOfLines={2}>{value}</Text>
+              </View>
+            ))}
           </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoKey}>Email</Text>
-            <Text style={styles.infoValue} numberOfLines={1}>
-              {user?.username ?? '—'}
-            </Text>
+
+          <TouchableOpacity style={styles.retakeBtn} onPress={handleRetake} activeOpacity={0.75}>
+            <Text style={styles.retakeBtnText}>Retake Assessment</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      ) : (
+        /* ── No clone yet — create CTA ── */
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.emptyContent}>
+          <View style={styles.emptyIconWrapper}>
+            <Text style={styles.emptyIcon}>🧬</Text>
           </View>
-          <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
-            <Text style={styles.infoKey}>Provider</Text>
-            <Text style={styles.infoValue}>AWS Cognito</Text>
+
+          <Text style={styles.emptyTitle}>Create Your AI Clone</Text>
+          <Text style={styles.emptySubtitle}>
+            Answer 10 quick questions about your family and we'll build a personalised AI clone you can chat with anytime.
+          </Text>
+
+          <View style={styles.featureList}>
+            {[
+              { icon: '❓', text: '10 multiple-choice questions' },
+              { icon: '🧠', text: 'AI learns your family profile' },
+              { icon: '💬', text: 'Chat with your clone instantly' },
+              { icon: '🔒', text: 'Everything stored on your phone' },
+            ].map((item, i) => (
+              <View key={i} style={styles.featureRow}>
+                <Text style={styles.featureRowIcon}>{item.icon}</Text>
+                <Text style={styles.featureRowText}>{item.text}</Text>
+              </View>
+            ))}
           </View>
-        </View>
 
-        {/* ── Profile link ── */}
-        <TouchableOpacity
-          style={styles.profileLink}
-          onPress={() => navigation.navigate('Profile')}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.profileLinkText}>View my profile</Text>
-          <Text style={styles.profileLinkIcon}>›</Text>
-        </TouchableOpacity>
+          <TouchableOpacity onPress={handleCreateClone} activeOpacity={0.88} style={styles.ctaWrapper}>
+            <LinearGradient
+              colors={[colors.gradientStart, colors.gradientEnd]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.ctaBtn}
+            >
+              <Text style={styles.ctaBtnText}>Create My Clone →</Text>
+            </LinearGradient>
+          </TouchableOpacity>
 
-        {/* ── Sign out ── */}
-        <PrimaryButton
-          title="Sign Out"
-          onPress={handleLogout}
-          loading={loggingOut}
-          variant="outline"
-          style={styles.signOutButton}
-        />
-
-        <Text style={styles.footer}>Digital Assistant · v1.0.0</Text>
-      </ScrollView>
+          <Text style={styles.ctaHint}>Takes about 2 minutes</Text>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 };
@@ -248,173 +198,230 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scroll: {
-    flexGrow: 1,
-    paddingBottom: spacing[20],
-  },
-
-  // Hero
-  hero: {
-    margin: spacing[5],
-    borderRadius: radius['2xl'],
-    padding: spacing[6],
-    paddingBottom: spacing[5],
-    ...shadows.lg,
-  },
-  avatarRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing[4],
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[6],
   },
-  avatar: {
-    width: 52,
-    height: 52,
+  greeting: {
+    fontSize: typography.sm,
+    color: 'rgba(255,255,255,0.75)',
+    marginBottom: 2,
+  },
+  headerName: {
+    ...typography.displayMedium,
+    color: '#fff',
+  },
+  headerAvatar: {
+    width: 44,
+    height: 44,
     borderRadius: radius.full,
     backgroundColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing[3],
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.4)',
   },
-  avatarText: {
-    ...typography.headingMedium,
-    color: colors.white,
+  headerAvatarText: {
+    fontSize: typography.md,
     fontWeight: '700',
+    color: '#fff',
   },
-  avatarMeta: {
+  centered: {
     flex: 1,
-  },
-  heroGreeting: {
-    ...typography.bodySmall,
-    color: 'rgba(255,255,255,0.75)',
-    marginBottom: 2,
-  },
-  heroName: {
-    ...typography.headingMedium,
-    color: colors.white,
-    fontWeight: '700',
-  },
-  emailBadge: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: radius.full,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1.5],
-    alignSelf: 'flex-start',
-    marginBottom: spacing[5],
-  },
-  emailBadgeText: {
-    ...typography.caption,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
-  },
-  statsRow: {
-    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  // Status
+  // ── Clone exists ──────────────────────────────────────────────────────────────
+  scrollContent: {
+    padding: spacing[5],
+    paddingBottom: spacing[10],
+  },
+  sectionLabel: {
+    fontSize: typography.xs,
+    fontWeight: '600',
+    color: colors.textMuted,
+    letterSpacing: 0.8,
+    marginBottom: spacing[3],
+  },
+  cloneCard: {
+    borderRadius: radius['2xl'],
+    padding: spacing[5],
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[4],
+    ...shadows.lg,
+  },
+  cloneAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.35)',
+    flexShrink: 0,
+  },
+  cloneAvatarEmoji: { fontSize: 30 },
+  cloneInfo: { flex: 1 },
+  cloneName: {
+    ...typography.headingMedium,
+    color: '#fff',
+    marginBottom: spacing[1],
+  },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[6],
+    gap: spacing[1.5],
+    marginBottom: spacing[1],
   },
   statusDot: {
     width: 8,
     height: 8,
     borderRadius: radius.full,
-    backgroundColor: colors.success,
-    marginRight: spacing[2],
+    backgroundColor: '#4ADE80',
   },
   statusText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
+    fontSize: typography.sm,
+    color: 'rgba(255,255,255,0.85)',
   },
-
-  // Section
-  sectionTitle: {
-    ...typography.headingSmall,
-    color: colors.textPrimary,
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[4],
+  cloneHint: {
+    fontSize: typography.sm,
+    color: 'rgba(255,255,255,0.65)',
   },
-  featureRow: {
+  arrowBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 36,
+    height: 36,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  arrowText: {
+    fontSize: typography.md,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  statsGrid: {
     flexDirection: 'row',
-    paddingHorizontal: spacing[5] - spacing[1.5],
+    flexWrap: 'wrap',
+    gap: spacing[3],
   },
-
-  // Info card
-  infoCard: {
+  statCard: {
+    width: '47%',
     backgroundColor: colors.surface,
     borderRadius: radius.xl,
-    marginHorizontal: spacing[5],
-    marginTop: spacing[6],
-    padding: spacing[5],
+    padding: spacing[4],
     borderWidth: 1,
     borderColor: colors.border,
     ...shadows.sm,
   },
-  infoTitle: {
-    ...typography.label,
-    color: colors.textSecondary,
-    marginBottom: spacing[4],
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing[2.5],
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  infoKey: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    flex: 1,
-  },
-  infoValue: {
-    ...typography.bodySmall,
-    color: colors.textPrimary,
-    fontWeight: '500',
-    flex: 2,
-    textAlign: 'right',
-  },
-
-  // Profile link
-  profileLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: spacing[5],
-    marginTop: spacing[3],
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[4],
-    backgroundColor: colors.indigo50,
-    borderRadius: radius.lg,
-  },
-  profileLinkText: {
-    ...typography.bodySmall,
-    color: colors.primary,
+  statIcon: { fontSize: 22, marginBottom: spacing[1.5] },
+  statLabel: {
+    fontSize: typography.xs,
     fontWeight: '600',
-  },
-  profileLinkIcon: {
-    fontSize: 18,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-
-  // Footer
-  signOutButton: {
-    marginHorizontal: spacing[5],
-    marginTop: spacing[5],
-  },
-  footer: {
-    ...typography.caption,
     color: colors.textMuted,
-    textAlign: 'center',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: spacing[1],
+  },
+  statValue: {
+    fontSize: typography.sm,
+    color: colors.textPrimary,
+    lineHeight: 18,
+  },
+  retakeBtn: {
     marginTop: spacing[6],
+    paddingVertical: spacing[4],
+    borderRadius: radius.xl,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  retakeBtnText: {
+    fontSize: typography.base,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+
+  // ── No clone yet ──────────────────────────────────────────────────────────────
+  emptyContent: {
+    padding: spacing[6],
+    paddingBottom: spacing[10],
+    alignItems: 'center',
+  },
+  emptyIconWrapper: {
+    width: 96,
+    height: 96,
+    borderRadius: radius.full,
+    backgroundColor: colors.indigo100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing[6],
+    marginBottom: spacing[5],
+  },
+  emptyIcon: { fontSize: 44 },
+  emptyTitle: {
+    ...typography.displayMedium,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: spacing[3],
+  },
+  emptySubtitle: {
+    fontSize: typography.base,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 23,
+    marginBottom: spacing[7],
+  },
+  featureList: {
+    alignSelf: 'stretch',
+    backgroundColor: colors.surface,
+    borderRadius: radius['2xl'],
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing[5],
+    gap: spacing[4],
+    marginBottom: spacing[7],
+    ...shadows.sm,
+  },
+  featureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+  },
+  featureRowIcon: { fontSize: 20, width: 28 },
+  featureRowText: {
+    fontSize: typography.base,
+    color: colors.textPrimary,
+    lineHeight: 22,
+  },
+  ctaWrapper: {
+    alignSelf: 'stretch',
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+    ...shadows.md,
+  },
+  ctaBtn: {
+    paddingVertical: spacing[5],
+    alignItems: 'center',
+  },
+  ctaBtnText: {
+    fontSize: typography.md,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.3,
+  },
+  ctaHint: {
+    marginTop: spacing[3],
+    fontSize: typography.sm,
+    color: colors.textMuted,
   },
 });
 

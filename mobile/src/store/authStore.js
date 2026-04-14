@@ -93,10 +93,11 @@ export function AuthProvider({ children }) {
       const { data: session } = await authService.getSession();
       const payload  = session?.getIdToken?.()?.payload ?? {};
       const email    = payload.email ?? cognitoUser.username;
+      const role     = deriveRole(payload, email);
       const user = {
         username:    email,
         displayName: payload.name ?? null,
-        role:        deriveRole(payload, email),
+        role,
       };
       dispatch({ type: AUTH_ACTIONS.INITIALIZE, payload: { user } });
     };
@@ -106,19 +107,19 @@ export function AuthProvider({ children }) {
   const signIn = useCallback(async (email, password) => {
     dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: true });
     const { data: session, error } = await authService.signIn(email, password);
-    console.log('[AuthStore.signIn] session:', !!session, '| error:', error?.message);
     if (error) {
       dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false });
       return { success: false, error };
     }
-    const payload = session?.getIdToken?.()?.payload ?? {};
+    const payload  = session?.getIdToken?.()?.payload ?? {};
     const username = payload.email ?? email.trim().toLowerCase();
+    const role     = deriveRole(payload, username);
+
     const user = {
       username:    username,
       displayName: payload.name ?? null,
-      role:        deriveRole(payload, username),
+      role,
     };
-    console.log('[AuthStore.signIn] dispatching SIGN_IN → user:', user.username, '| role:', user.role);
     dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
     return { success: true, error: null };
   }, []);

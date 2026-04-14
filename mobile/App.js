@@ -7,7 +7,6 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet, View, ActivityIndicator } from 'react-native';
-
 import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider } from './src/store/authStore';
 import { syncStorage } from './src/utils/syncStorage';

@@ -15,7 +15,7 @@ from ....models.family import Family, FamilyMember
 from ....models.clone import Clone
 from ....models.schemas import (
     FamilyCreate, FamilyResponse, FamilyMemberOut,
-    InviteRequest, JoinRequest,
+    InviteRequest, JoinRequest, JoinResponse,
     CloneListItem,
 )
 from ....core.security import verify_token
@@ -139,6 +139,7 @@ def invite_member(
         user_email=None,
         role="member",
         invite_code=invite_code,
+        relationship=payload.relationship,
     )
     db.add(member)
     db.commit()
@@ -186,7 +187,7 @@ def remove_member(
 
 # ── Member endpoints ──────────────────────────────────────────────────────────
 
-@router.post("/join", response_model=FamilyMemberOut)
+@router.post("/join", response_model=JoinResponse)
 def join_family(
     payload: JoinRequest,
     db: Session = Depends(get_db),
@@ -208,7 +209,14 @@ def join_family(
     member.accepted_at = datetime.utcnow()
     db.commit()
     db.refresh(member)
-    return FamilyMemberOut.model_validate(member)
+
+    family = db.query(Family).filter(Family.id == member.family_id).first()
+    base = FamilyMemberOut.model_validate(member)
+    return JoinResponse(
+        **base.model_dump(),
+        family_name=family.name if family else "",
+        creator_email=family.creator_email if family else "",
+    )
 
 
 @router.get("/my-clone", response_model=CloneListItem)

@@ -19,9 +19,9 @@ export const familyService = {
     }
   },
 
-  inviteMember: async (email) => {
+  inviteMember: async (email, relationship = null) => {
     try {
-      const response = await api.post('/families/invite', { email });
+      const response = await api.post('/families/invite', { email, relationship });
       return { data: response.data, error: null };
     } catch (error) {
       return { data: null, error };

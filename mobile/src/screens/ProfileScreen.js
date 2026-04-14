@@ -6,19 +6,46 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Share,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from '../store/authStore';
 import { PrimaryButton } from '../components';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { spacing, radius, shadows } from '../theme/spacing';
+import familyService from '../services/familyService';
 
 const ProfileScreen = ({ navigation }) => {
   const { user, signOut } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [family, setFamily]         = useState(null);
+  const [familyLoading, setFamilyLoading] = useState(false);
+
+  const isCreator = user?.role === 'creator';
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isCreator) return;
+      setFamilyLoading(true);
+      familyService.getMyFamily()
+        .then(({ data }) => setFamily(data ?? null))
+        .catch(() => setFamily(null))
+        .finally(() => setFamilyLoading(false));
+    }, [isCreator])
+  );
+
+  const handleShareCode = async (member) => {
+    try {
+      await Share.share({
+        message: `Join ${family?.name ?? 'our family'} on Digital Assistant!\n\nYour invite code: ${member.invite_code}`,
+      });
+    } catch (_) {}
+  };
 
   const displayEmail = user?.username ?? '';
   const displayName  = user?.displayName
@@ -47,16 +74,6 @@ const ProfileScreen = ({ navigation }) => {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {/* Back button */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.backIcon}>←</Text>
-          <Text style={styles.backText}>Home</Text>
-        </TouchableOpacity>
-
         {/* Avatar hero */}
         <LinearGradient
           colors={[colors.gradientStart, colors.gradientEnd]}
@@ -99,13 +116,63 @@ const ProfileScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Provider card */}
-        <View style={[styles.card, styles.cardSecondary]}>
-          <View style={styles.statusRow}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>Authenticated via AWS Cognito</Text>
+        {/* Family card — creator only */}
+        {isCreator && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Family</Text>
+
+            {familyLoading ? (
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: spacing[3] }} />
+            ) : !family ? (
+              <TouchableOpacity
+                style={[styles.row, styles.rowLast]}
+                onPress={() => navigation.navigate('FamilyManagement')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.rowKey}>Set Up Family</Text>
+                <Text style={[styles.rowValue, { color: colors.primary }]}>→</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <View style={styles.row}>
+                  <Text style={styles.rowKey}>Family Name</Text>
+                  <Text style={styles.rowValue} numberOfLines={1}>{family.name || '—'}</Text>
+                </View>
+                <View style={styles.row}>
+                  <Text style={styles.rowKey}>Members</Text>
+                  <Text style={styles.rowValue}>{family.members?.length ?? 0}</Text>
+                </View>
+
+                {/* Pending invite code rows */}
+                {family.members
+                  ?.filter(m => m.role !== 'creator' && !m.accepted_at)
+                  .map(m => (
+                    <TouchableOpacity
+                      key={m.id}
+                      style={styles.row}
+                      onPress={() => handleShareCode(m)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.rowKey, { flex: 2 }]} numberOfLines={1}>{m.email}</Text>
+                      <View style={styles.codeBadge}>
+                        <Text style={styles.codeText}>{m.invite_code}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                }
+
+                <TouchableOpacity
+                  style={[styles.row, styles.rowLast]}
+                  onPress={() => navigation.navigate('FamilyManagement')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.rowKey}>Manage &amp; Invite</Text>
+                  <Text style={[styles.rowValue, { color: colors.primary }]}>→</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
-        </View>
+        )}
 
         {/* Sign out */}
         <PrimaryButton
@@ -250,6 +317,18 @@ const styles = StyleSheet.create({
   signOutButton: {
     marginHorizontal: spacing[5],
     marginTop: spacing[4],
+  },
+  codeBadge: {
+    backgroundColor: colors.indigo100,
+    paddingHorizontal: spacing[2],
+    paddingVertical: 3,
+    borderRadius: radius.full,
+  },
+  codeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: colors.primary,
   },
 });
 
