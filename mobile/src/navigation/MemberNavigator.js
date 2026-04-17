@@ -1,9 +1,9 @@
 /**
  * MemberNavigator
- * On mount checks AsyncStorage to determine initial screen:
- *   No familyInfo       → JoinFamily
- *   familyInfo, no answers → MemberAssessment
- *   Both present        → MemberTabs
+ * On mount checks AsyncStorage then verifies against the backend:
+ *   No familyInfo / backend 404  → JoinFamily  (clears stale cache)
+ *   familyInfo valid, no answers → MemberAssessment
+ *   Both present                 → MemberTabs
  */
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
@@ -16,6 +16,7 @@ import MemberTabNavigator     from './MemberTabNavigator';
 import { useAuth }            from '../store/authStore';
 import { storageKey, KEYS }   from '../utils/userStorage';
 import { colors }             from '../theme/colors';
+import familyService          from '../services/familyService';
 
 const Stack = createStackNavigator();
 
@@ -24,16 +25,37 @@ const MemberNavigator = () => {
   const [initialRoute, setInitialRoute] = useState(null);
 
   useEffect(() => {
-    AsyncStorage.multiGet([
-      storageKey(user?.username, KEYS.memberFamilyInfo),
-      storageKey(user?.username, KEYS.memberAnswers),
-    ])
-      .then(([[, fi], [, ma]]) => {
-        if (!fi)      setInitialRoute('JoinFamily');
-        else if (!ma) setInitialRoute('MemberAssessment');
-        else          setInitialRoute('MemberTabs');
-      })
-      .catch(() => setInitialRoute('JoinFamily'));
+    const resolve = async () => {
+      try {
+        const [[, fi], [, ma]] = await AsyncStorage.multiGet([
+          storageKey(user?.username, KEYS.memberFamilyInfo),
+          storageKey(user?.username, KEYS.memberAnswers),
+        ]);
+
+        if (!fi) {
+          setInitialRoute('JoinFamily');
+          return;
+        }
+
+        // Verify the cached family still exists on the backend
+        const { error } = await familyService.getMyClone();
+        if (error) {
+          // Family or clone gone — clear stale cache and restart join flow
+          await AsyncStorage.multiRemove([
+            storageKey(user?.username, KEYS.memberFamilyInfo),
+            storageKey(user?.username, KEYS.memberAnswers),
+          ]);
+          setInitialRoute('JoinFamily');
+          return;
+        }
+
+        setInitialRoute(ma ? 'MemberTabs' : 'MemberAssessment');
+      } catch {
+        setInitialRoute('JoinFamily');
+      }
+    };
+
+    resolve();
   }, [user?.username]);
 
   if (!initialRoute) {

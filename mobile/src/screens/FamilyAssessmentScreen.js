@@ -26,6 +26,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../store/authStore';
 import { storageKey, KEYS } from '../utils/userStorage';
 import { colors } from '../theme/colors';
+import apiService from '../services/apiService';
 
 // ── Question Bank ─────────────────────────────────────────────────────────────
 
@@ -247,7 +248,7 @@ const FamilyAssessmentScreen = ({ navigation }) => {
       return;
     }
 
-    // Last question — save and proceed
+    // Last question — save locally (cache for HomeScreen) and sync to backend
     try {
       await AsyncStorage.setItem(
         storageKey(user?.username, KEYS.assessmentAnswers),
@@ -256,6 +257,8 @@ const FamilyAssessmentScreen = ({ navigation }) => {
     } catch {
       // Non-critical; proceed anyway
     }
+    // Fire-and-forget sync to backend (non-blocking)
+    apiService.post('/assessments/creator', { answers }).catch(() => {});
     navigation.replace('MainTabs');
   };
 

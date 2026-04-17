@@ -17,10 +17,6 @@ export const userPool = new CognitoUserPool({
   Storage: syncStorage,
 });
 
-// Cognito Identity Pool — required for direct Bedrock access from the mobile app.
-// Create an Identity Pool in the AWS Console, link it to the User Pool above,
-// and grant the Authenticated role bedrock:InvokeModelWithResponseStream.
-// Then replace the placeholder below with the real Identity Pool ID.
-export const identityPoolId = "us-east-1:8fa0eb42-83d1-4fc9-b34d-570df63f9c3e";
+// Bedrock is now called server-side — no Identity Pool needed on the mobile client.
 
 export const configureAmplify = () => {};

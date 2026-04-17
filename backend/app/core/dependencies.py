@@ -17,6 +17,9 @@ def get_stt_provider() -> STTProvider:
     if settings.STT_PROVIDER == "aws":
         from ..services.providers.aws.stt import AWSTranscribeProvider
         return AWSTranscribeProvider()
+    if settings.STT_PROVIDER == "whisper":
+        from ..services.providers.local.stt import FasterWhisperProvider
+        return FasterWhisperProvider(model_size=settings.WHISPER_MODEL_SIZE)
     raise ValueError(f"Unknown STT provider: {settings.STT_PROVIDER}")
 
 

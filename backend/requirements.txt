@@ -9,3 +9,4 @@ boto3==1.35.88
 chromadb==0.5.23
 python-multipart==0.0.19
 email-validator==2.2.0
+faster-whisper==1.1.1

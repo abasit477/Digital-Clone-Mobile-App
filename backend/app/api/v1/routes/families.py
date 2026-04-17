@@ -26,8 +26,9 @@ router = APIRouter(prefix="/families", tags=["families"])
 
 
 def _require_role(token: dict, *roles: str) -> str:
-    """Return the caller's email if their role is in `roles`, else 401."""
-    caller_role = token.get("custom:role", "")
+    """Return the caller's email if their role is in `roles`, else 403.
+    Users with no role set are treated as 'creator' (token refresh lag after signup)."""
+    caller_role = token.get("custom:role", "") or "creator"
     email = token.get("email", "")
     if caller_role not in roles:
         raise HTTPException(status_code=403, detail=f"Role '{caller_role}' not allowed here")

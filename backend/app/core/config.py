@@ -31,10 +31,14 @@ class Settings(BaseSettings):
 
     # ── Provider selection ────────────────────────────────────────────────────
     # Swap to "google" (or any registered provider) without changing code.
-    STT_PROVIDER: str = "aws"
+    STT_PROVIDER: str = "whisper"   # "whisper" (local, fast) | "aws" (batch, slow)
     TTS_PROVIDER: str = "aws"
     LLM_PROVIDER: str = "aws"
     KNOWLEDGE_PROVIDER: str = "chroma"
+
+    # faster-whisper model size: tiny | base | small | medium | large-v3
+    # tiny (~40 MB, fastest) | base (~145 MB, good balance) | small (~490 MB, best accuracy)
+    WHISPER_MODEL_SIZE: str = "base"
 
     # ── ChromaDB ─────────────────────────────────────────────────────────────
     CHROMA_PERSIST_DIR: str = "./chroma_data"

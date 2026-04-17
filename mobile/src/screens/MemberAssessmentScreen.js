@@ -23,6 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../store/authStore';
 import { storageKey, KEYS } from '../utils/userStorage';
 import { colors } from '../theme/colors';
+import apiService from '../services/apiService';
 
 // ── Question Definitions ───────────────────────────────────────────────────────
 
@@ -117,6 +118,8 @@ const MemberAssessmentScreen = ({ navigation }) => {
         JSON.stringify(answers)
       );
     } catch {}
+    // Sync to backend (non-blocking)
+    apiService.post('/assessments/member', { answers }).catch(() => {});
     navigation.replace('MemberTabs');
   };
 

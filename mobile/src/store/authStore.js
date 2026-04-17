@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import authService from '../services/authService';
 import { ADMIN_EMAIL } from '../config/adminConfig';
+import { clearUserCache } from '../utils/userStorage';
 
 /**
  * Derive role from token payload.
@@ -126,9 +127,10 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: true });
+    await clearUserCache(state.user?.username);
     await authService.signOut();
     dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
-  }, []);
+  }, [state.user]);
 
   // Called after setUserRole so navigation updates immediately
   const updateRole = useCallback((role) => {

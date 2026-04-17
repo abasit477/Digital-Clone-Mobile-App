@@ -138,3 +138,65 @@ class OnboardingAnswers(BaseModel):
 class PersonaSynthesisResponse(BaseModel):
     persona_prompt:  str
     knowledge_text:  str
+
+
+# ── Chat ─────────────────────────────────────────────────────────────────────
+
+class ChatMessageIn(BaseModel):
+    message:    str
+    is_opening: bool = False   # True = first-open greeting trigger (hidden from history)
+
+
+class ChatMessageOut(BaseModel):
+    id:         str
+    role:       str
+    content:    str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ChatHistoryResponse(BaseModel):
+    messages:   list[ChatMessageOut]
+    clone_name: str
+
+
+# ── Voice chat ───────────────────────────────────────────────────────────────
+
+class VoiceMessageIn(BaseModel):
+    audio_data: str        # base64-encoded audio
+    format:     str = "wav"  # "wav" | "mp4"
+
+
+class VoiceMessageOut(BaseModel):
+    transcript: str
+    id:         str
+    role:       str
+    content:    str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Assessments ───────────────────────────────────────────────────────────────
+
+class AssessmentSaveRequest(BaseModel):
+    answers: dict
+
+
+class AssessmentAnswersResponse(BaseModel):
+    answers: dict
+
+
+class Question(BaseModel):
+    key:         str
+    text:        str
+    type:        str                            # "mcq" | "text"
+    category:    str
+    placeholder: Optional[str] = None
+    options:     Optional[dict[str, str]] = None
+
+
+class QuestionsResponse(BaseModel):
+    questions:       list[Question]
+    branching_rules: dict                       # question_key → list of dependent keys
