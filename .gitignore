@@ -14,6 +14,11 @@ backend/digital_clone.db
 backend/chroma_data/
 backend/.venv/
 backend/venv/
+backend/sadtalker/
+backend/static/avatars/*
+backend/static/videos/*
+!backend/static/avatars/.gitkeep
+!backend/static/videos/.gitkeep
 
 # Python bytecode (recursive)
 __pycache__/

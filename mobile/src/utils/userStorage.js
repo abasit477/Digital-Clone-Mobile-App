@@ -15,6 +15,8 @@ export const KEYS = {
   memberFamilyInfo:  'member_family_info',   // { family_id, family_name, creator_email, creator_name, relationship }
   memberAnswers:     'member_answers',
   memberChatHistory: 'member_chat_history',
+  // Face chat
+  faceAvatarUrl:     'face_avatar_url',      // D-ID / SadTalker hosted image URL
 };
 
 /** Remove all cached data for a given user on sign-out. */

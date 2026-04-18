@@ -8,6 +8,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 import MemberHomeScreen from '../screens/MemberHomeScreen';
 import ChatScreen       from '../screens/ChatScreen';
+import FaceChatScreen   from '../screens/FaceChatScreen';
 import ProfileScreen    from '../screens/ProfileScreen';
 import { colors }       from '../theme/colors';
 import { typography }   from '../theme/typography';
@@ -16,9 +17,10 @@ import { radius }       from '../theme/spacing';
 const Tab = createBottomTabNavigator();
 
 const TAB_ICONS = {
-  Home:    '🏠',
-  Chat:    '💬',
-  Profile: '👤',
+  Home:     '🏠',
+  Chat:     '💬',
+  FaceChat: '🎭',
+  Profile:  '👤',
 };
 
 const TabIcon = ({ name, focused }) => (
@@ -44,9 +46,14 @@ const MemberTabNavigator = () => {
 
   return (
     <Tab.Navigator screenOptions={screenOptions}>
-      <Tab.Screen name="Home"    component={MemberHomeScreen} />
-      <Tab.Screen name="Chat"    component={ChatScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Home"     component={MemberHomeScreen} />
+      <Tab.Screen name="Chat"     component={ChatScreen} />
+      <Tab.Screen
+        name="FaceChat"
+        component={FaceChatScreen}
+        options={{ tabBarLabel: ({ focused }) => <TabLabel name="Face" focused={focused} /> }}
+      />
+      <Tab.Screen name="Profile"  component={ProfileScreen} />
     </Tab.Navigator>
   );
 };

@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import JoinFamilyScreen       from '../screens/JoinFamilyScreen';
 import MemberAssessmentScreen from '../screens/MemberAssessmentScreen';
+import FaceScanScreen         from '../screens/FaceScanScreen';
 import MemberTabNavigator     from './MemberTabNavigator';
 import { useAuth }            from '../store/authStore';
 import { storageKey, KEYS }   from '../utils/userStorage';
@@ -71,6 +72,7 @@ const MemberNavigator = () => {
       <Stack.Screen name="JoinFamily"       component={JoinFamilyScreen} />
       <Stack.Screen name="MemberAssessment" component={MemberAssessmentScreen} />
       <Stack.Screen name="MemberTabs"       component={MemberTabNavigator} />
+      <Stack.Screen name="FaceScan"         component={FaceScanScreen} />
     </Stack.Navigator>
   );
 };

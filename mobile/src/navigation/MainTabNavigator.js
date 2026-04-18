@@ -8,21 +8,23 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import HomeScreen    from '../screens/HomeScreen';
-import ChatScreen    from '../screens/ChatScreen';
-import ProfileScreen from '../screens/ProfileScreen';
-import { useAuth }   from '../store/authStore';
+import HomeScreen     from '../screens/HomeScreen';
+import ChatScreen     from '../screens/ChatScreen';
+import FaceChatScreen from '../screens/FaceChatScreen';
+import ProfileScreen  from '../screens/ProfileScreen';
+import { useAuth }    from '../store/authStore';
 import { storageKey, KEYS } from '../utils/userStorage';
-import { colors }    from '../theme/colors';
+import { colors }     from '../theme/colors';
 import { typography } from '../theme/typography';
-import { radius }    from '../theme/spacing';
+import { radius }     from '../theme/spacing';
 
 const Tab = createBottomTabNavigator();
 
 const TAB_ICONS = {
-  Home:    '🏠',
-  Chat:    '💬',
-  Profile: '👤',
+  Home:     '🏠',
+  Chat:     '💬',
+  FaceChat: '🎭',
+  Profile:  '👤',
 };
 
 const TabIcon = ({ name, focused }) => (
@@ -67,6 +69,14 @@ const MainTabNavigator = () => {
         options={{
           tabBarButton: hasClone ? undefined : () => null,
           tabBarStyle: !hasClone ? { ...styles.tabBar, paddingHorizontal: 40 } : styles.tabBar,
+        }}
+      />
+      <Tab.Screen
+        name="FaceChat"
+        component={FaceChatScreen}
+        options={{
+          tabBarLabel: ({ focused }) => <TabLabel name="Face" focused={focused} />,
+          tabBarButton: hasClone ? undefined : () => null,
         }}
       />
       <Tab.Screen name="Profile" component={ProfileScreen} />

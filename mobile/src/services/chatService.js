@@ -28,12 +28,30 @@ export default {
     }
   },
 
+  uploadAvatar: async (imageBase64) => {
+    try {
+      const response = await api.post('/avatar/upload', { image_data: imageBase64 }, { timeout: 30000 });
+      return { data: response.data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
   sendVoiceMessage: async (audioBase64, format) => {
     try {
       const response = await api.post('/chat/voice-message', {
         audio_data: audioBase64,
         format,
-      }, { timeout: 60000 }); // transcription can take 15-30s
+      }, { timeout: 60000 });
+      return { data: response.data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  pollVideoStatus: async (jobId) => {
+    try {
+      const response = await api.get(`/chat/video/${jobId}`, { timeout: 10000 });
       return { data: response.data, error: null };
     } catch (error) {
       return { data: null, error };

@@ -15,6 +15,7 @@ import { ActivityIndicator, View } from 'react-native';
 
 import FamilyAssessmentScreen  from '../screens/FamilyAssessmentScreen';
 import FamilyManagementScreen  from '../screens/FamilyManagementScreen';
+import FaceScanScreen           from '../screens/FaceScanScreen';
 import MainTabNavigator         from './MainTabNavigator';
 import { colors }               from '../theme/colors';
 
@@ -40,6 +41,7 @@ const CreatorNavigator = () => {
       <Stack.Screen name="FamilyAssessment"  component={FamilyAssessmentScreen} />
       <Stack.Screen name="MainTabs"          component={MainTabNavigator} />
       <Stack.Screen name="FamilyManagement"  component={FamilyManagementScreen} />
+      <Stack.Screen name="FaceScan"          component={FaceScanScreen} />
     </Stack.Navigator>
   );
 };

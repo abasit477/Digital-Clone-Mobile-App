@@ -169,13 +169,20 @@ class VoiceMessageIn(BaseModel):
 
 
 class VoiceMessageOut(BaseModel):
-    transcript: str
-    id:         str
-    role:       str
-    content:    str
-    created_at: datetime
+    transcript:    str
+    id:            str
+    role:          str
+    content:       str
+    created_at:    datetime
+    video_job_id:  str | None = None   # present when SadTalker is generating in background
+    video_url:     str | None = None   # present when video is already ready (fast path)
 
     model_config = {"from_attributes": True}
+
+
+class VideoStatusOut(BaseModel):
+    status:    str          # "pending" | "done" | "failed"
+    video_url: str | None = None
 
 
 # ── Assessments ───────────────────────────────────────────────────────────────
