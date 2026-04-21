@@ -169,13 +169,29 @@ class VoiceMessageIn(BaseModel):
 
 
 class VoiceMessageOut(BaseModel):
-    transcript: str
-    id:         str
-    role:       str
-    content:    str
-    created_at: datetime
+    transcript:   str
+    id:           str
+    role:         str
+    content:      str
+    created_at:   datetime
+    audio_url:    str | None = None   # URL to MP3 TTS response (cloned voice)
+    video_job_id: str | None = None   # SadTalker background job ID
+    video_url:    str | None = None   # Set when video generation completes
 
     model_config = {"from_attributes": True}
+
+
+class VideoStatusOut(BaseModel):
+    status:    str           # "pending" | "done" | "failed"
+    video_url: str | None = None
+
+
+class VoiceSampleIn(BaseModel):
+    audio_data: str          # base64-encoded WAV (30-60s recommended)
+
+
+class VoiceSampleOut(BaseModel):
+    voice_sample_url: str
 
 
 # ── Assessments ───────────────────────────────────────────────────────────────

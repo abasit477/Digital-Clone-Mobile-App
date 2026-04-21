@@ -4,7 +4,9 @@ POST /chat/message  — send a message, get a response from Bedrock
 GET  /chat/history  — load last 50 messages
 DELETE /chat/history — clear all messages (used on assessment retake)
 """
+import asyncio
 import base64
+import os
 import uuid
 import json
 import logging
@@ -21,22 +23,29 @@ from ....core.security import verify_token
 from ....services.prompt_builder import build_creator_system_prompt, build_member_system_prompt
 from ....services.providers.aws.agent import AWSBedrockAgent
 from ....services.interfaces.agent import AgentContext
-from ....core.dependencies import get_stt_provider
+from ....core.config import get_settings
+from ....core.dependencies import get_stt_provider, get_tts_provider
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-# Reuse single instances (thread-safe; STT provider selected by STT_PROVIDER env var)
+# Reuse single instances (thread-safe; providers selected by env vars)
 _agent = AWSBedrockAgent()
 _stt   = get_stt_provider()
+_tts   = get_tts_provider()
 
 
 def _get_or_create_clone_for_creator(user_email: str, db: Session) -> Clone:
     """Return existing clone or auto-create one from assessment answers (MVP flow)."""
-    clone = db.query(Clone).filter(
-        Clone.creator_email == user_email,
-        Clone.is_active == True,
-    ).first()
+    # Prefer clone with a voice sample so F5-TTS/XTTS can clone the creator's voice
+    clone = (
+        db.query(Clone)
+        .filter(Clone.creator_email == user_email, Clone.is_active == True, Clone.voice_sample_path != "")
+        .first()
+        or db.query(Clone)
+        .filter(Clone.creator_email == user_email, Clone.is_active == True)
+        .first()
+    )
     if clone:
         return clone
 
@@ -91,14 +100,28 @@ def _get_clone_for_member(user_email: str, db: Session) -> Clone:
 
 
 def _load_history(user_email: str, clone_id: str, db: Session, limit: int = 20) -> list[dict]:
+    # Load most-recent messages, then reverse to chronological order
     rows = (
         db.query(ChatMessage)
         .filter(ChatMessage.user_email == user_email, ChatMessage.clone_id == clone_id)
-        .order_by(ChatMessage.created_at.asc())
+        .order_by(ChatMessage.created_at.desc())
         .limit(limit)
         .all()
     )
-    return [{"role": r.role, "content": r.content} for r in rows]
+    rows = list(reversed(rows))
+    msgs = [{"role": r.role, "content": r.content} for r in rows]
+
+    # Deduplicate consecutive same-role messages (keep last)
+    deduped = []
+    for m in msgs:
+        if deduped and deduped[-1]["role"] == m["role"]:
+            deduped[-1] = m
+        else:
+            deduped.append(m)
+
+    # Bedrock requires history to start with a user message
+    first_user = next((i for i, m in enumerate(deduped) if m["role"] == "user"), None)
+    return deduped[first_user:] if first_user is not None else []
 
 
 def _save_message(user_email: str, clone_id: str, role: str, content: str, db: Session) -> ChatMessage:
@@ -300,12 +323,43 @@ async def send_voice_message(
     _save_message(user_email, clone.id, "user", transcript, db)
     assistant_msg = _save_message(user_email, clone.id, "assistant", response, db)
 
+    # ── TTS: synthesize response in clone's voice ────────────────────────────
+    audio_url = None
+    settings = get_settings()
+    if clone.voice_sample_path or clone.voice_id or settings.TTS_PROVIDER in ("aws", "f5tts", "xtts"):
+        try:
+            import re
+            # Strip LLM placeholders like [Child's Name] before TTS — XTTS speaks brackets literally
+            tts_text = re.sub(r'\[.*?\]', '', response).strip()
+            # XTTS on CPU takes ~25s/sentence — cap at 2 sentences
+            if settings.TTS_PROVIDER == "xtts":
+                sentences = [s.strip() for s in re.split(r'[.!?]', tts_text) if s.strip()]
+                tts_text = '. '.join(sentences[:2]) + '.'
+            # Local providers (f5tts, xtts) use voice_sample_path; Polly uses voice_id
+            voice_ref = (clone.voice_sample_path or clone.voice_id) if settings.TTS_PROVIDER in ("xtts", "f5tts") else clone.voice_id
+            audio_bytes = await _tts.synthesize(tts_text, voice_ref)
+            audio_filename = f"{assistant_msg.id}.mp3"
+            static_dir = settings.STATIC_DIR or os.path.join(
+                os.path.dirname(__file__), "../../../../..", "static"
+            )
+            audio_dir = os.path.join(os.path.abspath(static_dir), "audio")
+            os.makedirs(audio_dir, exist_ok=True)
+            audio_path = os.path.join(audio_dir, audio_filename)
+            with open(audio_path, "wb") as f:
+                f.write(audio_bytes)
+            base_url = settings.SERVER_BASE_URL.rstrip("/")
+            audio_url = f"{base_url}/static/audio/{audio_filename}"
+            logger.info(f"[chat/voice] TTS done → {audio_url}")
+        except Exception as e:
+            logger.warning(f"[chat/voice] TTS failed (non-fatal): {e}")
+
     return VoiceMessageOut(
         transcript=transcript,
         id=assistant_msg.id,
         role=assistant_msg.role,
         content=assistant_msg.content,
         created_at=assistant_msg.created_at,
+        audio_url=audio_url,
     )
 
 

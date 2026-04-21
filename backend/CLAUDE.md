@@ -28,7 +28,13 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Dev server — use 0.0.0.0 so the phone can reach it on the local network
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# PYTORCH_ENABLE_MPS_FALLBACK=1 required — XTTS v2 runs on CPU (MPS channel limit issue)
+PYTORCH_ENABLE_MPS_FALLBACK=1 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Logs are written to `./logs/backend.log` (directory auto-created). Tail live:
+```bash
+tail -f logs/backend.log
 ```
 
 API docs: `http://localhost:8000/docs`
@@ -97,12 +103,46 @@ Family endpoints (`/api/v1/families/`):
 WebSocket at `/api/v1/ws/voice` — **streaming pipeline**:
 1. Client → `init` (clone_id, domain)
 2. Client → `audio_chunk` (base64, multiple) + `end_of_speech` (with `format` field)
-3. Server: Transcribe STT → ChromaDB RAG (top-5) → Bedrock `converse_stream()` → sentence-level Polly TTS
+3. Server: Transcribe STT → ChromaDB RAG (top-5) → Bedrock `converse_stream()` → sentence-level TTS
 4. Server → `transcript`, `response_text`, per-sentence `audio_chunk` + `audio_segment_done`, final `turn_done`
 
 Audio format: iOS records `.wav` (LinearPCM 16kHz), Android records `.mp4` (AAC 16kHz). Format sent in `end_of_speech`.
 
 Transcribe Streaming was attempted and reverted — `awscrt` native C event loop incompatible with uvicorn asyncio.
+
+### Voice Cloning (F5-TTS)
+
+**Upload endpoint:** `POST /api/v1/voice/upload-sample`
+- Accepts base64-encoded audio (any format — pydub converts to 22kHz mono 16-bit WAV)
+- Resolves clone from token: creator → their own clone, member → their family's clone
+- Saves to `{STATIC_DIR}/voice_samples/{clone_id}.wav`
+- Updates `clone.voice_sample_path` in DB
+
+**F5-TTS provider:** `services/providers/local/f5tts_provider.py`
+- Model: F5-TTS flow-matching model (~600 MB, auto-downloaded from HuggingFace on first call)
+- Device: CPU (MPS can be enabled by changing `device="cpu"` → `device="mps"` in provider)
+- `voice_id` = absolute path to reference WAV (6–30s). Empty → bundled EN reference voice
+- Lazy-loaded singleton. First call also runs Whisper to transcribe the reference audio (cached per path)
+- No time-stretching bug. ~3–5s inference on CPU for a short sentence.
+- Install: `pip install f5-tts`
+
+**XTTS provider (deprecated, kept for reference):** `services/providers/local/xtts.py`
+- Has severe time-stretching bug for certain voices — use F5-TTS instead
+
+**TTS voice selection in routes:**
+- `chat.py` (`POST /chat/voice-message`): uses `clone.voice_sample_path or clone.voice_id`
+- `voice.py` (WebSocket `_flush_sentence`): uses `clone.voice_sample_path or clone.voice_id`
+
+**DB columns on `clones`:**
+- `voice_id` — AWS Polly voice name (e.g. `"Matthew"`) or XTTS label
+- `voice_sample_path` — absolute server path to uploaded WAV; takes priority over `voice_id`
+
+**DB migration note:** `voice_sample_path` was added after initial DB creation. On existing DBs run:
+```sql
+ALTER TABLE clones ADD COLUMN voice_sample_path VARCHAR(500) DEFAULT "";
+```
+
+**Mobile:** `VoiceRecordScreen.js` — records 30s via `expo-av`, base64-encodes, POSTs to upload endpoint.
 
 ### Persona Synthesis
 
@@ -179,3 +219,6 @@ On submit: synthesize persona → create clone → ingest knowledge → (family:
 | `SES_SENDER_EMAIL` | `""` | Verified SES address; empty = skip email |
 | `CHROMA_PERSIST_DIR` | `./chroma_data` | Local disk |
 | `POLLY_DEFAULT_VOICE` | `Matthew` | Used when clone has no voice_id |
+| `TTS_PROVIDER` | `aws` | `f5tts` = local voice cloning (recommended), `aws` = Polly, `xtts` = deprecated |
+| `STT_PROVIDER` | `aws` | `aws` = Transcribe, `whisper` = local Whisper |
+| `STATIC_DIR` | `./static` | Served at `/static/`; subdirs: `avatars/`, `voice_samples/`, `audio/`, `videos/` |

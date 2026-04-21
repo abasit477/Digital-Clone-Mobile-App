@@ -14,6 +14,10 @@ backend/digital_clone.db
 backend/chroma_data/
 backend/.venv/
 backend/venv/
+backend/static/voice_samples/*
+backend/static/audio/*
+!backend/static/voice_samples/.gitkeep
+!backend/static/audio/.gitkeep
 
 # Python bytecode (recursive)
 __pycache__/
@@ -29,6 +33,12 @@ __pycache__/
 *.p8
 *.mobileprovision
 aws-exports.js
+
+# ── Claude Code ───────────────────────────────────────────────────────────────
+.claude/
+
+# ── Deferred / large external frameworks ─────────────────────────────────────
+backend/sadtalker/
 
 # ── OS / IDE ──────────────────────────────────────────────────────────────────
 .DS_Store

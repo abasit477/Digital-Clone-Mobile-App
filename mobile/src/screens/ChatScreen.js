@@ -38,9 +38,17 @@ const ChatScreen = ({ navigation }) => {
   const [cloneName, setCloneName]   = useState('Family Clone');
   const [isRecording, setIsRecording] = useState(false);
 
-  const flatListRef   = useRef(null);
-  const recordingRef  = useRef(null);
-  const recordStartTs = useRef(null);
+  const [lastAudioUrl, setLastAudioUrl] = useState(null);
+
+  const flatListRef    = useRef(null);
+  const recordingRef   = useRef(null);
+  const recordStartTs  = useRef(null);
+  const responseSndRef = useRef(null);  // current TTS response sound
+
+  // ── Cleanup audio on unmount ─────────────────────────────────────────────
+  useEffect(() => {
+    return () => { responseSndRef.current?.unloadAsync(); };
+  }, []);
 
   // ── Init ─────────────────────────────────────────────────────────────────
 
@@ -134,6 +142,27 @@ const ChatScreen = ({ navigation }) => {
     }
   };
 
+  // ── Audio playback ────────────────────────────────────────────────────────
+
+  const playAudioUrl = async (url) => {
+    try {
+      if (responseSndRef.current) await responseSndRef.current.unloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: url },
+        { shouldPlay: true, isLooping: false },
+      );
+      responseSndRef.current = sound;
+      sound.setOnPlaybackStatusUpdate(status => {
+        if (status.isLoaded && status.didJustFinish && !status.isLooping) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (audioErr) {
+      console.warn('[ChatScreen] TTS playback error:', audioErr?.message);
+    }
+  };
+
   // ── Voice recording ───────────────────────────────────────────────────────
 
   const startRecording = async () => {
@@ -180,6 +209,11 @@ const ChatScreen = ({ navigation }) => {
         if (m.id === placeholderAsstId)     return { id: data.id, role: 'assistant', content: data.content };
         return m;
       }));
+      // Auto-play TTS response if backend returned an audio URL
+      if (data.audio_url) {
+        setLastAudioUrl(data.audio_url);
+        await playAudioUrl(data.audio_url);
+      }
     } catch (err) {
       console.error('[ChatScreen] voice send error:', err?.message);
       setMessages(prev => prev.map(m =>
@@ -254,6 +288,15 @@ const ChatScreen = ({ navigation }) => {
       {/* Input */}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.inputRow}>
+          {lastAudioUrl && !isRecording && (
+            <Pressable
+              style={styles.replayBtn}
+              onPress={() => playAudioUrl(lastAudioUrl)}
+              disabled={sending}
+            >
+              <Text style={styles.micIcon}>🔊</Text>
+            </Pressable>
+          )}
           <Pressable
             style={[styles.micBtn, isRecording && styles.micBtnActive]}
             onPressIn={startRecording}
@@ -361,6 +404,7 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { opacity: 0.4 },
   sendGradient:    { flex: 1, alignItems: 'center', justifyContent: 'center' },
   sendIcon:        { fontSize: 20, color: '#fff', fontWeight: '700' },
+  replayBtn:       { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   micBtn:          { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   micBtnActive:    { backgroundColor: '#FEE2E2', borderColor: '#EF4444' },
   micIcon:         { fontSize: 20 },
