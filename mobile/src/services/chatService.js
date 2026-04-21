@@ -33,7 +33,18 @@ export default {
       const response = await api.post('/chat/voice-message', {
         audio_data: audioBase64,
         format,
-      }, { timeout: 60000 }); // transcription can take 15-30s
+      }, { timeout: 600000 }); // STT + Bedrock + F5-TTS CPU synthesis (~3-5 min per chunk)
+      return { data: response.data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  uploadVoiceSample: async (audioBase64) => {
+    try {
+      const response = await api.post('/voice/upload-sample', {
+        audio_data: audioBase64,
+      }, { timeout: 30000 });
       return { data: response.data, error: null };
     } catch (error) {
       return { data: null, error };

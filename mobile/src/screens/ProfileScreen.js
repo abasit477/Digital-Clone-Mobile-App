@@ -116,6 +116,20 @@ const ProfileScreen = ({ navigation }) => {
           </View>
         </View>
 
+        {/* Voice Clone card — creator only */}
+        {isCreator && (
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => navigation.navigate('VoiceRecord')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.cardTitle}>🎙️ Clone Your Voice</Text>
+            <Text style={[styles.rowValue, { marginTop: 4 }]}>
+              Record a 30s sample so your clone speaks in your voice
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Family card — creator only */}
         {isCreator && (
           <View style={styles.card}>

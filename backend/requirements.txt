@@ -10,3 +10,8 @@ chromadb==0.5.23
 python-multipart==0.0.19
 email-validator==2.2.0
 faster-whisper==1.1.1
+TTS>=0.22.0
+pydub>=0.25.1
+torch>=2.0.0
+huggingface_hub>=0.24.0
+f5-tts

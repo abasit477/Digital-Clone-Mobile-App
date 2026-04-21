@@ -29,6 +29,12 @@ def get_tts_provider() -> TTSProvider:
     if settings.TTS_PROVIDER == "aws":
         from ..services.providers.aws.tts import AWSPollyProvider
         return AWSPollyProvider()
+    if settings.TTS_PROVIDER == "xtts":
+        from ..services.providers.local.xtts import XTTSProvider
+        return XTTSProvider()
+    if settings.TTS_PROVIDER == "f5tts":
+        from ..services.providers.local.f5tts_provider import F5TTSProvider
+        return F5TTSProvider()
     raise ValueError(f"Unknown TTS provider: {settings.TTS_PROVIDER}")
 
 

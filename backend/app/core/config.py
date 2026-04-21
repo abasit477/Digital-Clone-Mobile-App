@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     # tiny (~40 MB, fastest) | base (~145 MB, good balance) | small (~490 MB, best accuracy)
     WHISPER_MODEL_SIZE: str = "base"
 
+    # ── SadTalker / Video generation ─────────────────────────────────────────
+    SADTALKER_DIR: str = ""
+    SERVER_BASE_URL: str = "http://localhost:8000"
+    STATIC_DIR: str = ""          # absolute path to backend/static/ — set in .env
+
     # ── ChromaDB ─────────────────────────────────────────────────────────────
     CHROMA_PERSIST_DIR: str = "./chroma_data"
 

@@ -15,8 +15,10 @@ class Clone(Base):
     # Available domains e.g. "family,professional,general" (comma-separated)
     domains:        Mapped[str]      = mapped_column(String(300), default="general")
     avatar_url:     Mapped[str]      = mapped_column(String(500), default="")
-    # AWS Polly voice ID for this clone
-    voice_id:       Mapped[str]      = mapped_column(String(50), default="")
+    # AWS Polly voice ID (used when TTS_PROVIDER=aws)
+    voice_id:            Mapped[str] = mapped_column(String(50), default="")
+    # Absolute server path to uploaded WAV — used by F5-TTS for zero-shot voice cloning
+    voice_sample_path:   Mapped[str] = mapped_column(String(500), default="")
     creator_email:  Mapped[str]      = mapped_column(String(200), default="")
     is_active:      Mapped[bool]     = mapped_column(Boolean, default=True)
     created_at:     Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

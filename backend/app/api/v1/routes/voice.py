@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from ....db.database import get_db
 from ....models.clone import Clone
 from ....core.dependencies import get_stt_provider, get_tts_provider, get_agent_provider, get_knowledge_provider
+from ....core.config import get_settings
 from ....core.security import verify_token_string
 from ....services.interfaces.agent import AgentContext
 from ....services.interfaces.stt import STTProvider
@@ -156,7 +157,9 @@ async def voice_websocket(
 
                 async def _flush_sentence(sentence: str):
                     """Synthesize one sentence and stream its audio to the client."""
-                    audio_bytes = await tts.synthesize(sentence, voice_id=clone.voice_id)
+                    _settings = get_settings()
+                    voice_ref = (clone.voice_sample_path or clone.voice_id) if _settings.TTS_PROVIDER in ("xtts", "f5tts") else clone.voice_id
+                    audio_bytes = await tts.synthesize(sentence, voice_id=voice_ref)
                     for i in range(0, len(audio_bytes), chunk_size):
                         await _send(ws, {
                             "type": "audio_chunk",
