@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Git Workflow
 
-- **Never commit directly to `main`** — all development happens on `develop` or a feature branch
+- **Never commit directly to `main`** — all feature branches are cut from `development`
+- Branch flow: `main` ← `development` ← `feature/*`
+  - Create feature branches from `development`
+  - Merge feature → `development` first, test there
+  - Merge `development` → `main` only after testing
 - Do not push until the user has tested and explicitly confirmed
 - Repo: `abasit477/Digital-Clone-Mobile-App`
 
